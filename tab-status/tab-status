@@ -146,7 +146,7 @@ deliver_title() {
 on run argv
   set sentinel to item 1 of argv
   set theTitle to item 2 of argv
-  tell application "Ghostty"
+  tell application id "com.mitchellh.ghostty"
     set matches to {}
     repeat 12 times
       set matches to (every terminal whose name is sentinel)

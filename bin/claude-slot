@@ -74,13 +74,13 @@ osascript <<EOF
 -- https://github.com/zeitlings/alfred-ghostty-script
 
 on isRunning()
-    application "Ghostty" is running
+    application id "com.mitchellh.ghostty" is running
 end isRunning
 
 on hasWindows()
     if not isRunning() then return false
     tell application "System Events"
-        return exists window 1 of process "Ghostty"
+        return exists window 1 of (first process whose bundle identifier is "com.mitchellh.ghostty")
     end tell
 end hasWindows
 
@@ -94,7 +94,7 @@ end waitForWindow
 
 set just_activated to not isRunning()
 
-tell application "Ghostty" to activate
+tell application id "com.mitchellh.ghostty" to activate
 
 if just_activated then
     if not waitForWindow(3) then
@@ -116,7 +116,7 @@ do shell script "cat ${CLAUDE_SLOT_CMD_DIR}/cmd.txt | pbcopy"
 delay 0.1
 
 tell application "System Events"
-    tell process "Ghostty"
+    tell (first process whose bundle identifier is "com.mitchellh.ghostty")
         keystroke "v" using command down
         delay 0.1
         keystroke return

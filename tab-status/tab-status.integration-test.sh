@@ -50,7 +50,7 @@ deliver_title "$marker"
 found=$(osascript - "$marker" <<'OSA'
 on run argv
   set want to item 1 of argv
-  tell application "Ghostty"
+  tell application id "com.mitchellh.ghostty"
     set n to 0
     repeat with w in windows
       repeat with t in tabs of w

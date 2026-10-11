@@ -15,9 +15,8 @@
 #
 # Usage: gt
 #
-# Requires: fzf, macOS System Events (Ghostty must be the frontmost app's
-# process "Ghostty"). Accessibility permission is needed for System Events to
-# read/click menus — grant it to whatever runs gt (your terminal) if prompted.
+# Requires: fzf, macOS System Events. Accessibility permission is needed for
+# System Events to read/click menus — grant it to whatever runs gt (your terminal) if prompted.
 
 set -euo pipefail
 
@@ -88,7 +87,7 @@ gt_preview() {
 # separator (missing-value name), which is that list.
 gt_dump_menu() {
   osascript <<'APPLESCRIPT'
-tell application "System Events" to tell process "Ghostty"
+tell application "System Events" to tell (first process whose bundle identifier is "com.mitchellh.ghostty")
   set menuItems to menu items of menu 1 of (menu bar item "Window" of menu bar 1)
   set n to count of menuItems
   set lastSep to 0
@@ -111,8 +110,8 @@ gt_click_index() {
   osascript - "$idx" <<'APPLESCRIPT'
 on run argv
   set idx to (item 1 of argv) as integer
-  tell application "Ghostty" to activate
-  tell application "System Events" to tell process "Ghostty"
+  tell application id "com.mitchellh.ghostty" to activate
+  tell application "System Events" to tell (first process whose bundle identifier is "com.mitchellh.ghostty")
     set menuItems to menu items of menu 1 of (menu bar item "Window" of menu bar 1)
     click (item idx of menuItems)
   end tell

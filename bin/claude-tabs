@@ -268,11 +268,11 @@ build_restore_applescript() {
   # load, the new tab hadn't taken focus yet and the paste ended up in the
   # prior tab where `claude` was already booting.
   #
-  # Note: we keep `tell application "Ghostty"` blocks small and avoid using
+  # Note: we keep `tell application id "com.mitchellh.ghostty"` blocks small and avoid using
   # any identifier that might collide with terminology Ghostty's dictionary
   # loads into scope (e.g. `date`, `time`).
   #
-  # `tell application "Ghostty" to activate` does NOT reliably open a window:
+  # `tell application id "com.mitchellh.ghostty" to activate` does NOT reliably open a window:
   # launching Ghostty cold (or waking it from a backgrounded, zero-window
   # state) leaves it running with no windows. So we don't wait for a window to
   # appear — we ask the scripting dictionary for one with `new window` when the
@@ -284,7 +284,7 @@ end readCmd
 
 on sendToTerminal(term, cmdFile)
     set cmdText to my readCmd(cmdFile)
-    tell application "Ghostty"
+    tell application id "com.mitchellh.ghostty"
         input text cmdText to term
         send key "enter" to term
     end tell
@@ -293,13 +293,13 @@ end sendToTerminal
 set cmdDir to "${cmd_dir}"
 set sessionCount to ${count}
 
-tell application "Ghostty" to activate
+tell application id "com.mitchellh.ghostty" to activate
 
 -- Acquire a target window. If Ghostty has no windows (cold launch, or a
 -- backgrounded zero-window state), create one and reuse its default tab for
 -- cmd-0 so we don't strand an empty shell. If a window already exists, add
 -- our tabs to it without disturbing the user's existing tabs.
-tell application "Ghostty"
+tell application id "com.mitchellh.ghostty"
     if (count of windows) is 0 then
         set targetWindow to (new window)
         set reuseFirstTab to true
@@ -314,7 +314,7 @@ if reuseFirstTab then
     -- Give the freshly created window's shell a moment to come up before we
     -- paste into it.
     delay 0.3
-    tell application "Ghostty"
+    tell application id "com.mitchellh.ghostty"
         set firstTerm to terminal 1 of tab 1 of targetWindow
     end tell
     my sendToTerminal(firstTerm, cmdDir & "/cmd-0.txt")
@@ -322,7 +322,7 @@ if reuseFirstTab then
 end if
 
 repeat with i from startIdx to (sessionCount - 1)
-    tell application "Ghostty"
+    tell application id "com.mitchellh.ghostty"
         set newT to new tab in targetWindow
         set newTerm to terminal 1 of newT
     end tell

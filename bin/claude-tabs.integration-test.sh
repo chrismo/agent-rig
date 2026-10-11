@@ -47,14 +47,14 @@ TABS="$REPO/bin/claude-tabs"
 
 reset_ghostty_cold() {
   echo "Quitting Ghostty for a clean cold slate..."
-  osascript -e 'tell application "Ghostty" to quit' 2>/dev/null || true
+  osascript -e 'tell application id "com.mitchellh.ghostty" to quit' 2>/dev/null || true
   sleep 1.5
 }
 
 # Echo "index: working_directory" for every tab in the front window.
 read_back_working_dirs() {
   osascript <<'AS'
-tell application "Ghostty"
+tell application id "com.mitchellh.ghostty"
     set theWindow to front window
     set out to ""
     repeat with t in tabs of theWindow
@@ -105,7 +105,7 @@ teardown_note() {
   local close="$1"
   if [[ "$close" -eq 1 ]]; then
     echo "Closing test window..."
-    osascript -e 'tell application "Ghostty" to close front window' 2>/dev/null || true
+    osascript -e 'tell application id "com.mitchellh.ghostty" to close front window' 2>/dev/null || true
   else
     echo "Test window left open for inspection."
     echo "  close: osascript -e 'tell application \"Ghostty\" to close front window'"
@@ -153,10 +153,10 @@ run_routing() {
     # open exactly one window for restore to add tabs to (it must NOT reuse
     # this window's default tab, so we expect 1 default + N restored tabs).
     echo "Resetting Ghostty, then opening one window to restore into..."
-    osascript -e 'tell application "Ghostty" to quit' 2>/dev/null || true
+    osascript -e 'tell application id "com.mitchellh.ghostty" to quit' 2>/dev/null || true
     sleep 1.5
-    osascript -e 'tell application "Ghostty" to activate' \
-              -e 'tell application "Ghostty" to new window' >/dev/null
+    osascript -e 'tell application id "com.mitchellh.ghostty" to activate' \
+              -e 'tell application id "com.mitchellh.ghostty" to new window' >/dev/null
     sleep 1
   fi
 
