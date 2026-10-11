@@ -451,6 +451,21 @@ Worth knowing from the receiving end: the peer cannot tell which of these it
 got. Addressing is resolved entirely sender-side, so a bare-name send and a ref
 send arrive byte-identical.
 
+**RE-VERIFIED unchanged on 2.1.296** (2026-10-11). Four sends, no pins held:
+
+| # | `to` | result |
+|---|---|---|
+| 1 | `agent-rig` — prefix, one live row | rejected sender-side, error named that row's ref |
+| 2 | `agent-rig-e0` — bare, unique | **delivered** |
+| 3 | `agent-rig-e0 [4576bf]` — ref | delivered |
+| 4 | `agent-rig` — prefix, two live rows | rejected sender-side, error named both refs |
+
+Row 1 settles the 2.1.251 row-2 confound: with no pin held, a unique prefix does
+**not** resolve on its own — it is the `confirm_required` refusal. Rows 2 and 3
+were confirmed from the receiving end: both tokens appear in agent-rig-e0's
+transcript as cross-session messages, and it described each back correctly.
+Rows 1 and 4 appear in no receiver's transcript.
+
 ## 4. Where roster metadata comes from — partial
 
 The `name`, `kind`, `status` and uptime on a roster row are **not fetched from
