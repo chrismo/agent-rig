@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
 # internals-drift - warn when Claude Code's version moves past the one
-#                   claude-rig's internals were last verified against
+#                   agent-rig's internals were last verified against
 #
 # Fires on SessionStart.
 #
-# claude-rig depends on several things Claude Code does not expose as an API:
+# agent-rig depends on several things Claude Code does not expose as an API:
 # the session registry (~/.claude/sessions/<pid>.json), the transcript .jsonl
 # schema, the projects-directory path encoding, and the peer messaging protocol.
 # None of that is contract; all of it can change in a point release.
@@ -24,8 +24,8 @@
 set -uo pipefail
 
 REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-VERIFIED_FILE="${CLAUDE_RIG_VERIFIED_FILE:-$REPO_DIR/docs/verified-against}"
-RESULTS_FILE="${CLAUDE_RIG_CONTRACT_RESULTS:-$REPO_DIR/docs/contract-results.tsv}"
+VERIFIED_FILE="${AGENT_RIG_VERIFIED_FILE:-$REPO_DIR/docs/verified-against}"
+RESULTS_FILE="${AGENT_RIG_CONTRACT_RESULTS:-$REPO_DIR/docs/contract-results.tsv}"
 
 # Summarise what the contract suite actually established about a given build.
 #
@@ -135,11 +135,11 @@ main() {
   summary=$(summarise_results "$running")
 
   cat <<EOF
-⚠ claude-rig: internals verified against Claude Code $verified, running $running.
+⚠ agent-rig: internals verified against Claude Code $verified, running $running.
 ${summary:+
 $summary}
 
-  claude-rig reads Claude Code internals that are not a supported API (session
+  agent-rig reads Claude Code internals that are not a supported API (session
   registry, transcript schema, peer messaging). A version change is the cue to
   re-check them:
 

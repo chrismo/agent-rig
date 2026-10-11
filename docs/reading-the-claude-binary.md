@@ -1,6 +1,6 @@
 # Reading the Claude binary
 
-Most of what claude-rig does depends on how Claude Code actually behaves: where
+Most of what agent-rig does depends on how Claude Code actually behaves: where
 it records running sessions, how peer addressing resolves, what a roster row is
 made of. Those questions were being answered by observation — probe a socket,
 run `lsof`, compare two sessions, infer a rule. That's slow, and it leaves you
@@ -113,6 +113,6 @@ message. Read from source, not yet observed in practice.
 
 ## Scope
 
-This is for understanding behaviour that claude-rig has to integrate with. It
+This is for understanding behaviour that agent-rig has to integrate with. It
 reads a binary already installed on the machine; it doesn't modify, repackage, or
 redistribute anything.

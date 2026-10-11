@@ -23,7 +23,7 @@ setup() {
   # The tool-agnostic shared MCP config. pi's adapter hardcodes
   # ~/.config/mcp/mcp.json (it does not honour XDG_CONFIG_HOME), so the seam is
   # an explicit override rather than XDG.
-  export CLAUDE_RIG_MCP_SHARED_CONFIG="$TEST_DIR/.config/mcp/mcp.json"
+  export AGENT_RIG_MCP_SHARED_CONFIG="$TEST_DIR/.config/mcp/mcp.json"
   export AGENT_SKILLS_DIR="$TEST_DIR/.agents/skills"
   export CODEX_SKILLS_DIR="$TEST_DIR/.codex/skills"
   mkdir -p "$CLAUDE_DIR"
@@ -105,7 +105,7 @@ EOF
   run_installer
   [ "$status" -eq 0 ]
   # A named key after the ...this.hooks spread replaces that event's array
-  # wholesale, so claude-rig owns SessionStart outright: the stale entry is
+  # wholesale, so agent-rig owns SessionStart outright: the stale entry is
   # gone and both of ours are present.
   local count cmd matcher
   count=$(settings_get 'len(this.hooks.SessionStart)')
@@ -132,7 +132,7 @@ EOF
   local cmd
   cmd=$(settings_get 'this.hooks.SubagentStop[0].hooks[0].command')
   [ "$cmd" = "/my/custom-hook.sh" ]
-  # And claude-rig's hooks are also installed alongside
+  # And agent-rig's hooks are also installed alongside
   local matcher
   matcher=$(settings_get 'this.hooks.PreToolUse[0].matcher')
   [ "$matcher" = "Bash" ]
@@ -577,6 +577,68 @@ EOF
   [ "$(< "$PI_CODING_AGENT_DIR/extensions/personal-footer.ts")" = 'mine' ]
 }
 
+# ── Migration from the claude-rig checkout path ─────────────────────────────
+
+OLD_CHECKOUT() { echo "$TEST_DIR/old/claude-rig"; }
+
+@test "migration: dangling pi skill link into the old checkout is replaced" {
+  mkdir -p "$PI_CODING_AGENT_DIR/skills"
+  ln -s "$(OLD_CHECKOUT)/skills/dialogue" "$PI_CODING_AGENT_DIR/skills/dialogue"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ "$(readlink "$PI_CODING_AGENT_DIR/skills/dialogue")" = "$BATS_TEST_DIRNAME/skills/dialogue" ]
+}
+
+@test "migration: dangling pi link for a dropped skill is retired" {
+  mkdir -p "$PI_CODING_AGENT_DIR/skills"
+  ln -s "$(OLD_CHECKOUT)/skills/lemma-drain" "$PI_CODING_AGENT_DIR/skills/lemma-drain"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ ! -L "$PI_CODING_AGENT_DIR/skills/lemma-drain" ]
+}
+
+@test "migration: dangling simplify links into the old checkout are replaced" {
+  mkdir -p "$AGENT_SKILLS_DIR" "$CODEX_SKILLS_DIR"
+  ln -s "$(OLD_CHECKOUT)/skills/simplify" "$AGENT_SKILLS_DIR/simplify"
+  ln -s "$(OLD_CHECKOUT)/skills/simplify" "$CODEX_SKILLS_DIR/simplify"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ "$(readlink "$AGENT_SKILLS_DIR/simplify")" = "$BATS_TEST_DIRNAME/skills/simplify" ]
+  [ "$(readlink "$CODEX_SKILLS_DIR/simplify")" = "$BATS_TEST_DIRNAME/skills/simplify" ]
+}
+
+@test "migration: dangling pi footer link into the old checkout is replaced" {
+  mkdir -p "$PI_CODING_AGENT_DIR/extensions"
+  ln -s "$(OLD_CHECKOUT)/pi/extensions/personal-footer.ts" "$PI_CODING_AGENT_DIR/extensions/personal-footer.ts"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ "$(readlink "$PI_CODING_AGENT_DIR/extensions/personal-footer.ts")" = "$BATS_TEST_DIRNAME/pi/extensions/personal-footer.ts" ]
+}
+
+@test "migration: dangling Claude skill link for a skill deleted since the move is pruned" {
+  mkdir -p "$CLAUDE_DIR/skills"
+  ln -s "$(OLD_CHECKOUT)/skills/deleted-skill/" "$CLAUDE_DIR/skills/deleted-skill"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ ! -L "$CLAUDE_DIR/skills/deleted-skill" ]
+}
+
+@test "migration: a live link into a claude-rig checkout that still exists is left alone" {
+  mkdir -p "$(OLD_CHECKOUT)/skills/dialogue" "$PI_CODING_AGENT_DIR/skills"
+  ln -s "$(OLD_CHECKOUT)/skills/dialogue" "$PI_CODING_AGENT_DIR/skills/dialogue"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ "$(readlink "$PI_CODING_AGENT_DIR/skills/dialogue")" = "$(OLD_CHECKOUT)/skills/dialogue" ]
+}
+
+@test "migration: a dangling link into some other repo is still left alone" {
+  mkdir -p "$PI_CODING_AGENT_DIR/skills"
+  ln -s "$TEST_DIR/elsewhere/skills/dialogue" "$PI_CODING_AGENT_DIR/skills/dialogue"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ "$(readlink "$PI_CODING_AGENT_DIR/skills/dialogue")" = "$TEST_DIR/elsewhere/skills/dialogue" ]
+}
+
 # ── Shared MCP config ───────────────────────────────────────────────────────
 #
 # pi has no native MCP; pi-mcp-adapter supplies it and reads
@@ -590,27 +652,27 @@ EOF
 @test "mcp: the shared config is not created when pi is not set up" {
   run_installer
   [ "$status" -eq 0 ]
-  [ ! -e "$CLAUDE_RIG_MCP_SHARED_CONFIG" ]
+  [ ! -e "$AGENT_RIG_MCP_SHARED_CONFIG" ]
 }
 
 @test "mcp: the shared config is symlinked to the repo's copy" {
   mkdir -p "$PI_CODING_AGENT_DIR"
   run_installer
   [ "$status" -eq 0 ]
-  [ -L "$CLAUDE_RIG_MCP_SHARED_CONFIG" ]
+  [ -L "$AGENT_RIG_MCP_SHARED_CONFIG" ]
   local target
-  target=$(readlink "$CLAUDE_RIG_MCP_SHARED_CONFIG")
+  target=$(readlink "$AGENT_RIG_MCP_SHARED_CONFIG")
   [[ "$target" == "$BATS_TEST_DIRNAME/pi/mcp.json" ]]
 }
 
 @test "mcp: a real config file is never clobbered, only reported" {
-  mkdir -p "$PI_CODING_AGENT_DIR" "$(dirname "$CLAUDE_RIG_MCP_SHARED_CONFIG")"
-  echo '{"mcpServers":{"theirs":{"command":"foo"}}}' > "$CLAUDE_RIG_MCP_SHARED_CONFIG"
+  mkdir -p "$PI_CODING_AGENT_DIR" "$(dirname "$AGENT_RIG_MCP_SHARED_CONFIG")"
+  echo '{"mcpServers":{"theirs":{"command":"foo"}}}' > "$AGENT_RIG_MCP_SHARED_CONFIG"
   run_installer
   [ "$status" -eq 0 ]
-  [ ! -L "$CLAUDE_RIG_MCP_SHARED_CONFIG" ]
-  grep -q "theirs" "$CLAUDE_RIG_MCP_SHARED_CONFIG"
-  [[ "$output" == *"$CLAUDE_RIG_MCP_SHARED_CONFIG"* ]]
+  [ ! -L "$AGENT_RIG_MCP_SHARED_CONFIG" ]
+  grep -q "theirs" "$AGENT_RIG_MCP_SHARED_CONFIG"
+  [[ "$output" == *"$AGENT_RIG_MCP_SHARED_CONFIG"* ]]
 }
 
 @test "mcp: re-running the installer keeps the symlink" {
@@ -618,7 +680,7 @@ EOF
   run_installer
   run_installer
   [ "$status" -eq 0 ]
-  [ -L "$CLAUDE_RIG_MCP_SHARED_CONFIG" ]
+  [ -L "$AGENT_RIG_MCP_SHARED_CONFIG" ]
 }
 
 @test "mcp: the tracked config parses and declares servers" {
@@ -705,7 +767,7 @@ EOF
 
 @test "bin: a stale tab-status symlink (e.g. to another repo) is replaced" {
   # Models the brain takeover: an existing symlink pointing elsewhere must be
-  # repointed at claude-rig's copy.
+  # repointed at agent-rig's copy.
   mkdir -p "$LOCAL_BIN"
   ln -s "/some/other/repo/xdg/.local/bin/tab-status" "$LOCAL_BIN/tab-status"
   run_installer

@@ -1,4 +1,4 @@
-# claude-rig
+# agent-rig
 
 Opinionated customizations for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — agents, skills, a SuperDB-powered two-line statusline, a Ghostty tab-status system, and an installer to wire it all up.
 
@@ -41,7 +41,7 @@ Both `wt` commands print a path rather than changing directory, because a subpro
 Sourced shell code — not symlinked, because it has to run *in* your shell. Add to `~/.zshrc`:
 
 ```sh
-source ~/modev/claude-rig/shell/rig.zsh
+source ~/modev/agent-rig/shell/rig.zsh
 ```
 
 `install.sh` checks for this line and prints the instruction if it's missing; it will not edit `.zshrc` for you. Defines `new_wt` and `wt` as thin `cd "$(...)"` wrappers over the `bin/` commands.
@@ -89,7 +89,7 @@ repo, and the plugin shells out to it. That script has to be maintained past
 the switch to the litellm stack, and the way to notice it breaking is to run
 it rather than keep a parallel copy here that drifts — so this statusline
 renders from the artifact an outside user gets. Point the plugin somewhere
-else with `CLAUDE_RIG_SPEND_STATUSLINE`, or edit the one path at the top of
+else with `AGENT_RIG_SPEND_STATUSLINE`, or edit the one path at the top of
 it. Missing checkout means a missing segment, silently.
 
 `bin/claude-spend` is no longer in that path. It stays as a CLI for a one-off
@@ -251,7 +251,7 @@ reason the pi install is gated.
 
 ### `docs/`
 
-- **`claude-rig-breakout-spec.md`** — how this repo was extracted from a monorepo
+- **`claude-rig-breakout-spec.md`** — how this repo (then named claude-rig) was extracted from a monorepo
 - **`multi-session-coordination.md`** — notes on orchestrating multiple Claude sessions
 - **`reading-the-claude-binary.md`** — how `claude-src` gets Claude Code's source out of the shipped binary, and what it has settled so far
 - **`mcp-slack.md`** — Slack MCP integration research
@@ -266,8 +266,8 @@ Prerequisites: [SuperDB](https://superdb.org) for the statusline, [Ghostty](http
 brew install superdb/tap/super
 
 # Clone and run the installer
-git clone https://github.com/chrismo/claude-rig.git
-cd claude-rig
+git clone https://github.com/chrismo/agent-rig.git
+cd agent-rig
 ./install.sh
 ```
 

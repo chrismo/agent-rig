@@ -12,10 +12,10 @@ set +x   # tracing prints the keychain blob, refresh token included
 
 export ASDF_SUPERDB_VERSION=0.3.0
 
-FIXTURE="${CLAUDE_RIG_SPEND_JSON:-}"
-ENDPOINT="${CLAUDE_RIG_SPEND_ENDPOINT:-https://api.anthropic.com/api/oauth/usage}"
-CACHE="${CLAUDE_RIG_SPEND_CACHE:-$HOME/.claude/cache/claude-spend.json}"
-TTL="${CLAUDE_RIG_SPEND_TTL:-300}"
+FIXTURE="${AGENT_RIG_SPEND_JSON:-}"
+ENDPOINT="${AGENT_RIG_SPEND_ENDPOINT:-https://api.anthropic.com/api/oauth/usage}"
+CACHE="${AGENT_RIG_SPEND_CACHE:-$HOME/.claude/cache/claude-spend.json}"
+TTL="${AGENT_RIG_SPEND_TTL:-300}"
 
 RAW=0
 BRIEF=0

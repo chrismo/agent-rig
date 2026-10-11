@@ -25,7 +25,7 @@
 #
 # Output format is TSV, four columns:
 #
-#   claude-rig  03d41dc  1788130000  contract: record what each test established
+#   agent-rig  03d41dc  1788130000  contract: record what each test established
 #
 # Two rules, both about never breaking the caller:
 #
@@ -35,7 +35,7 @@
 
 set -uo pipefail
 
-QUEUE="${CLAUDE_RIG_LEMMA_QUEUE:-$HOME/.claude/lemmalog/pending.tsv}"
+QUEUE="${AGENT_RIG_LEMMA_QUEUE:-$HOME/.claude/lemmalog/pending.tsv}"
 
 main() {
   # A repo with no sha is not a commit. Under-application is a no-op, not an

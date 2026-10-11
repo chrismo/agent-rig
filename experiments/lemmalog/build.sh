@@ -22,7 +22,7 @@ set -euo pipefail
 
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo=$(cd -- "$here/../.." && pwd)
-results="${CLAUDE_RIG_CONTRACT_RESULTS:-$repo/docs/contract-results.tsv}"
+results="${AGENT_RIG_CONTRACT_RESULTS:-$repo/docs/contract-results.tsv}"
 
 # Rules. The REPL reads one line at a time, so a clause wrapped across lines
 # has to be folded back into one before the `rule ` prefix goes on — otherwise

@@ -364,7 +364,7 @@ Bash call when the next thing you do depends on the answer.
 ```
 NAME             PID    REF     KIND         STATUS  FOR  CWD
 q-chat-rooms     21797  b58096  interactive  idle    4h   ~/modev/q-chat-rooms
-claude-rig-one   30739  2ee790  interactive  busy    28s  ~/modev/claude-rig
+agent-rig-one   30739  2ee790  interactive  busy    28s  ~/modev/agent-rig
 ```
 
 That `FOR` column is an abandonment detector — a peer idle for hours is a

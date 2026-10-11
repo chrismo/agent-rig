@@ -8,7 +8,7 @@ allowed-tools: Bash
 
 Run it and show the output:
 
-    ~/modev/claude-rig/bin/lemma-info
+    ~/modev/agent-rig/bin/lemma-info
 
 That is the whole job. **Do not reimplement any of it** — not the fact count,
 not the queue breakdown, not the registration check. The script is the source of

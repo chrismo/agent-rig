@@ -69,8 +69,8 @@ a live `ListAgents` roster:
 ```
 name                   pid  computed ListAgents match
 q-chat-rooms         21797  b58096   q-chat-rooms   OK
-claude-rig-two       30571  1f4a1e   claude-rig-two OK
-claude-rig-one       30739  2ee790   claude-rig-one OK
+agent-rig-two       30571  1f4a1e   agent-rig-two OK
+agent-rig-one       30739  2ee790   agent-rig-one OK
 q-chat-rooms-6f      81153  3ca88e   q-chat-rooms-6f OK
 ```
 
@@ -115,7 +115,7 @@ one (below), shows what actually goes on the wire:
  "msg_id":"14292e75-85cb-4548-b368-b1258f2cc43c",
  "type":"user",
  "message":{"role":"user","content":
-   "<cross-session-message from=\"uds:/tmp/cc-socks/98880.sock\" from-name=\"claude-rig\" from-mode=\"prompting\">\n…\n</cross-session-message>"},
+   "<cross-session-message from=\"uds:/tmp/cc-socks/98880.sock\" from-name=\"agent-rig\" from-mode=\"prompting\">\n…\n</cross-session-message>"},
  "priority":"next",
  "from":"uds:/tmp/cc-socks/98880.sock"}
 ```
@@ -158,7 +158,7 @@ an unmatched receipt is dropped with:
 ```
 
 Practically: **you can learn that a peer's human is sitting on your message**
-(`held`) or refused it (`denied`). Nothing in claude-rig uses this yet.
+(`held`) or refused it (`denied`). Nothing in agent-rig uses this yet.
 
 ### Dispatch ordering
 
@@ -263,8 +263,8 @@ Addressing a peer by a name that does not resolve returns an error naming the
 correct ref, plus the session's type, locality and idle time:
 
 ```
-'claude-rig-one' is not an agent in this conversation. Re-send with the ref to confirm you mean:
-  claude-rig-one [2ee790] — Claude session, on this machine, active 17m ago
+'agent-rig-one' is not an agent in this conversation. Re-send with the ref to confirm you mean:
+  agent-rig-one [2ee790] — Claude session, on this machine, active 17m ago
 ```
 
 That is a **disclosure oracle**: guessing names yields valid refs and liveness
@@ -412,10 +412,10 @@ resolve rather than silently delivering to the wrong session.
 
 | # | `to` | result |
 |---|---|---|
-| 1 | `claude-rig-e1` — bare, no pin held | **delivered** |
-| 2 | `claude-rig-e` — prefix, pin now held | delivered |
+| 1 | `agent-rig-e1` — bare, no pin held | **delivered** |
+| 2 | `agent-rig-e` — prefix, pin now held | delivered |
 | 3 | `questor-` — prefix, two live rows | rejected, error named both refs |
-| 4 | `claude-rig-e1 [47e788]` — ref | delivered |
+| 4 | `agent-rig-e1 [47e788]` — ref | delivered |
 
 So the rule is now **bare name whenever it is unique; the ref is for when the
 error asks for it**. Row 1 is the one that changed: on 2.1.226 the identical
@@ -438,11 +438,11 @@ without repeating row 2's confound:
 | # | `to` | result |
 |---|---|---|
 | 1 | `Review` — prefix, three live rows | rejected sender-side, error named all three refs |
-| 2 | `claude-rig-64` — bare, unique, no pin held | **delivered** |
-| 3 | `claude-rig-64 [0c4a0f]` — ref | delivered |
+| 2 | `agent-rig-64` — bare, unique, no pin held | **delivered** |
+| 3 | `agent-rig-64 [0c4a0f]` — ref | delivered |
 
 Rows 2 and 3 were confirmed from the receiving end rather than from their own
-`success` results: both probes appear in claude-rig-64's transcript, and it
+`success` results: both probes appear in agent-rig-64's transcript, and it
 described the first one back correctly. Row 1 went first on purpose — a refused
 send never reaches anyone, so the ambiguity gate is the half that costs no peer
 a turn.
@@ -538,7 +538,7 @@ async function tfa(){ let e = Xpa.join(Tn(), "sessions"), t
 The filename is the PID and is the only thing trusted to identify the file;
 anything not matching `/^\d+\.json$/` is ignored.
 
-## What this means for claude-rig
+## What this means for agent-rig
 
 - A ref can be computed offline from a registry file — no roster call needed.
 - `sessionId` in the registry is the transcript UUID, so a PID maps to a

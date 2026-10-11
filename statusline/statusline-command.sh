@@ -3,14 +3,14 @@
 # NOTE: Target Bash 3.2 compatibility (macOS default).
 # Avoid: ${var,,}, ${var^^}, local -n, associative arrays, etc.
 
-# Install via the claude-rig installer:
-#   bash /path/to/claude-rig/install/claude-installer.sh
+# Install via the agent-rig installer:
+#   bash /path/to/agent-rig/install/claude-installer.sh
 #
 # Or manually in ~/.claude/settings.json:
 # {
 #   "statusLine": {
 #     "type": "command",
-#     "command": "bash /path/to/claude-rig/statusline/statusline-command.sh"
+#     "command": "bash /path/to/agent-rig/statusline/statusline-command.sh"
 #   }
 # }
 

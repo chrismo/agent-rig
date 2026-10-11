@@ -15,7 +15,7 @@
 # script applies it.
 #
 # The flow is one-way, manifest -> machine. Nothing is ever removed: the
-# manifest is claude-rig's opinion, and a package installed on a machine may be
+# manifest is agent-rig's opinion, and a package installed on a machine may be
 # there for a reason this repo knows nothing about. Those are reported instead,
 # so adopting one into the manifest stays a deliberate act.
 #
@@ -46,8 +46,8 @@ SCRIPT_DIR="$(cd "$(dirname "$SELF")" && pwd -P)" ||
   die "cannot resolve the directory of $SELF"
 
 # Test seams. Both are the real defaults on a real machine.
-SETTINGS="${CLAUDE_RIG_PI_SETTINGS:-$HOME/.pi/agent/settings.json}"
-MANIFEST="${CLAUDE_RIG_PI_MANIFEST:-$SCRIPT_DIR/../pi/packages.txt}"
+SETTINGS="${AGENT_RIG_PI_SETTINGS:-$HOME/.pi/agent/settings.json}"
+MANIFEST="${AGENT_RIG_PI_MANIFEST:-$SCRIPT_DIR/../pi/packages.txt}"
 
 CHECK=0
 [[ $# -le 1 ]] || { echo "Usage: pi-sync [--check]" >&2; exit 2; }

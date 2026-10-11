@@ -26,11 +26,11 @@ set -uo pipefail
 # Same defaults as bin/lemma-install and hooks/lemma-brief.sh. They are pinned
 # to each other by bin/lemma-install.bats — a disagreement here would report a
 # store that is filling up correctly as permanently empty.
-QUEUE="${CLAUDE_RIG_LEMMA_QUEUE:-$HOME/.claude/lemmalog/pending.tsv}"
-SNAPSHOT="${CLAUDE_RIG_LEMMA_SNAPSHOT:-$HOME/.claude/lemmalog/store.snapshot}"
-CLAUDE_JSON="${CLAUDE_RIG_CLAUDE_JSON:-$HOME/.claude.json}"
+QUEUE="${AGENT_RIG_LEMMA_QUEUE:-$HOME/.claude/lemmalog/pending.tsv}"
+SNAPSHOT="${AGENT_RIG_LEMMA_SNAPSHOT:-$HOME/.claude/lemmalog/store.snapshot}"
+CLAUDE_JSON="${AGENT_RIG_CLAUDE_JSON:-$HOME/.claude.json}"
 SRC="${LEMMALOG_SRC:-$HOME/modev/lemmalog}"
-MARKER="${CLAUDE_RIG_LEMMA_MARKER:-$HOME/.claude/lemmalog/enabled}"
+MARKER="${AGENT_RIG_LEMMA_MARKER:-$HOME/.claude/lemmalog/enabled}"
 
 BIN="$SRC/target/release/lemmalog-mcp"
 
@@ -42,7 +42,7 @@ NO="✗"
 needs_install=0
 
 current_repo() {
-  local cwd="${CLAUDE_RIG_LEMMA_CWD:-$PWD}"
+  local cwd="${AGENT_RIG_LEMMA_CWD:-$PWD}"
   [[ -d "$cwd" ]] || return 0
   git -C "$cwd" rev-parse --show-toplevel 2>/dev/null | xargs -I{} basename {} 2>/dev/null
 }

@@ -38,9 +38,9 @@ timestamp and the update policy decides:
 
 Verified against this repo's real `tmp/` reversal:
 
-    observe "claude-rig --commit_msg_location--> repo-level-tmp"  ts=1775440109  -> added=1
-    observe "claude-rig --commit_msg_location--> dot-claude-tmp"  ts=1775828224  -> updated=1
-    query   current("claude-rig","commit_msg_location",O)         -> O=dot-claude-tmp
+    observe "agent-rig --commit_msg_location--> repo-level-tmp"  ts=1775440109  -> added=1
+    observe "agent-rig --commit_msg_location--> dot-claude-tmp"  ts=1775828224  -> updated=1
+    query   current("agent-rig","commit_msg_location",O)         -> O=dot-claude-tmp
 
 Two commits eight months apart, the second reversing the first, resolved with no
 human in the loop. The superseded fact is interval-closed, not deleted, so
@@ -72,10 +72,10 @@ There is no "multi-valued" declaration — only `exclusive`. So a predicate that
 legitimately holds many values escalates on every value after the first:
 
     observe two depends_on values -> added=2 escalations=1
-      "conflict: claude-rig --depends_on--> bats asserted in ep3,
+      "conflict: agent-rig --depends_on--> bats asserted in ep3,
        but depends_on also open (superdb)"
 
-That is a false positive; claude-rig depends on both. The fact is still added —
+That is a false positive; agent-rig depends on both. The fact is still added —
 escalation is advisory, never a rejection.
 
 **Expected-multi predicates** — `ruled_out`, `because`, `requires`, `constrains`,
@@ -105,7 +105,7 @@ Real spread across chrismo's repos, so you know what to expect:
 | `clabs` | 293 over 13 years | 1 |
 | `clwiki` | 213 over 14 years | 3 |
 | `brain` | 945 over 9 years | 37 |
-| `claude-rig` | 202 | 71 |
+| `agent-rig` | 202 | 71 |
 | `questor` | 1508 | 220 |
 
 **Age is not the variable; prose density is.** Old repos self-limit — terse
@@ -127,13 +127,13 @@ So this is rejected:
 
     heredocs --because--> "cascading denial: heredoc, then /tmp, then echo redirect, each blocked by a different rule"
       -> looks like prose (more than 8 words)
-    commit-message-mechanism --located--> "claude-rig@bc0e867"
+    commit-message-mechanism --located--> "agent-rig@bc0e867"
       -> contains punctuation ('@')
 
 and this is the same content, asserted:
 
     heredocs --because--> cascading-tool-denials
-    commit-message-mechanism --located--> claude-rig-bc0e867
+    commit-message-mechanism --located--> agent-rig-bc0e867
 
 **Provenance is `repo-sha`, never `repo@sha`.** Reasons are short kebab-case
 entities, not sentences — the sentence lives in the commit, which `located`

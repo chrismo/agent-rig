@@ -13,8 +13,8 @@ bats_require_minimum_version 1.5.0
 S="$BATS_TEST_DIRNAME/claude-spend"
 
 setup() {
-  export CLAUDE_RIG_SPEND_JSON="$BATS_TEST_TMPDIR/usage.json"
-  export CLAUDE_RIG_SPEND_CACHE="$BATS_TEST_TMPDIR/cache.json"
+  export AGENT_RIG_SPEND_JSON="$BATS_TEST_TMPDIR/usage.json"
+  export AGENT_RIG_SPEND_CACHE="$BATS_TEST_TMPDIR/cache.json"
 }
 
 # Age a file past any plausible TTL.
@@ -22,7 +22,7 @@ stale() { touch -t 200001010000 "$1"; }
 
 # The real payload from an individual Max plan, trimmed to the keys that matter.
 individual_plan() {
-  cat > "$CLAUDE_RIG_SPEND_JSON" <<'JSON'
+  cat > "$AGENT_RIG_SPEND_JSON" <<'JSON'
 {
   "five_hour": { "utilization": 5.0, "limit_dollars": null, "used_dollars": null },
   "seven_day": { "utilization": 8.0, "limit_dollars": null, "used_dollars": null },
@@ -44,7 +44,7 @@ JSON
 # Synthetic: what the shape looks like once credits carry a spend limit.
 with_spend_limit() {
   local used="$1" limit="$2" percent="$3"
-  cat > "$CLAUDE_RIG_SPEND_JSON" <<JSON
+  cat > "$AGENT_RIG_SPEND_JSON" <<JSON
 {
   "spend": {
     "used": { "amount_minor": $used, "currency": "USD", "exponent": 2 },
@@ -77,7 +77,7 @@ JSON
 }
 
 @test "spend block absent entirely: same answer, still exit 0" {
-  echo '{"five_hour":{"utilization":5.0}}' > "$CLAUDE_RIG_SPEND_JSON"
+  echo '{"five_hour":{"utilization":5.0}}' > "$AGENT_RIG_SPEND_JSON"
   run "$S"
   [ "$status" -eq 0 ]
   [[ "$output" == *"usage credits"* ]]
@@ -107,7 +107,7 @@ JSON
 }
 
 @test "non-USD currency keeps its code instead of a dollar sign" {
-  cat > "$CLAUDE_RIG_SPEND_JSON" <<'JSON'
+  cat > "$AGENT_RIG_SPEND_JSON" <<'JSON'
 {
   "spend": {
     "used": { "amount_minor": 1234, "currency": "EUR", "exponent": 2 },
@@ -131,14 +131,14 @@ JSON
 }
 
 @test "fetch failure is an error, and names the file" {
-  export CLAUDE_RIG_SPEND_JSON="$BATS_TEST_TMPDIR/does-not-exist.json"
+  export AGENT_RIG_SPEND_JSON="$BATS_TEST_TMPDIR/does-not-exist.json"
   run "$S"
   [ "$status" -ne 0 ]
   [[ "$output" == *"does-not-exist.json"* ]]
 }
 
 @test "an empty response is an error, not an account diagnosis" {
-  : > "$CLAUDE_RIG_SPEND_JSON"
+  : > "$AGENT_RIG_SPEND_JSON"
   run "$S"
   [ "$status" -ne 0 ]
   [[ "$output" != *"usage credits"* ]]
@@ -159,7 +159,7 @@ JSON
 }
 
 @test "malformed response is an error, not a parser spew" {
-  echo 'not json' > "$CLAUDE_RIG_SPEND_JSON"
+  echo 'not json' > "$AGENT_RIG_SPEND_JSON"
   run "$S"
   [ "$status" -ne 0 ]
   [[ "$output" == *"could not read"* ]]
@@ -182,11 +182,11 @@ JSON
 @test "a fetch populates the cache" {
   with_spend_limit 1234 5000 25
   run "$S"
-  [ -s "$CLAUDE_RIG_SPEND_CACHE" ]
+  [ -s "$AGENT_RIG_SPEND_CACHE" ]
 }
 
 @test "a fresh cache is used instead of fetching again" {
-  echo '{"spend":{"used":{"amount_minor":9900,"currency":"USD","exponent":2},"limit":{"amount_minor":9900,"currency":"USD","exponent":2},"percent":99,"enabled":true}}' > "$CLAUDE_RIG_SPEND_CACHE"
+  echo '{"spend":{"used":{"amount_minor":9900,"currency":"USD","exponent":2},"limit":{"amount_minor":9900,"currency":"USD","exponent":2},"percent":99,"enabled":true}}' > "$AGENT_RIG_SPEND_CACHE"
   with_spend_limit 1234 5000 25
   run "$S"
   [[ "$output" == *'$99'* ]] || false
@@ -194,15 +194,15 @@ JSON
 }
 
 @test "a stale cache is refetched" {
-  echo '{"spend":{"used":{"amount_minor":9900,"currency":"USD","exponent":2},"limit":{"amount_minor":9900,"currency":"USD","exponent":2},"percent":99,"enabled":true}}' > "$CLAUDE_RIG_SPEND_CACHE"
-  stale "$CLAUDE_RIG_SPEND_CACHE"
+  echo '{"spend":{"used":{"amount_minor":9900,"currency":"USD","exponent":2},"limit":{"amount_minor":9900,"currency":"USD","exponent":2},"percent":99,"enabled":true}}' > "$AGENT_RIG_SPEND_CACHE"
+  stale "$AGENT_RIG_SPEND_CACHE"
   with_spend_limit 1234 5000 25
   run "$S"
   [[ "$output" == *'$12'* ]]
 }
 
 @test "--fresh ignores a fresh cache" {
-  echo '{"spend":{"used":{"amount_minor":9900,"currency":"USD","exponent":2},"limit":{"amount_minor":9900,"currency":"USD","exponent":2},"percent":99,"enabled":true}}' > "$CLAUDE_RIG_SPEND_CACHE"
+  echo '{"spend":{"used":{"amount_minor":9900,"currency":"USD","exponent":2},"limit":{"amount_minor":9900,"currency":"USD","exponent":2},"percent":99,"enabled":true}}' > "$AGENT_RIG_SPEND_CACHE"
   with_spend_limit 1234 5000 25
   run "$S" --fresh
   [[ "$output" == *'$12'* ]]
@@ -211,9 +211,9 @@ JSON
 @test "a failed fetch does not clobber a good cache" {
   with_spend_limit 1234 5000 25
   run "$S"
-  stale "$CLAUDE_RIG_SPEND_CACHE"
-  export CLAUDE_RIG_SPEND_JSON="$BATS_TEST_TMPDIR/gone.json"
+  stale "$AGENT_RIG_SPEND_CACHE"
+  export AGENT_RIG_SPEND_JSON="$BATS_TEST_TMPDIR/gone.json"
   run "$S"
   [ "$status" -ne 0 ]
-  [ -s "$CLAUDE_RIG_SPEND_CACHE" ]
+  [ -s "$AGENT_RIG_SPEND_CACHE" ]
 }

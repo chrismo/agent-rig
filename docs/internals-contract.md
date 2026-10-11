@@ -1,6 +1,6 @@
 # The internals contract
 
-claude-rig reads things Claude Code does not expose as a supported API. All of
+agent-rig reads things Claude Code does not expose as a supported API. All of
 it can change in a point release, without notice and without a changelog entry.
 
 This file is the inventory of those assumptions. Each has an ID, and the same ID
@@ -177,7 +177,7 @@ quietly stops being true.
 
 ## Adding an assumption
 
-When you make something in claude-rig depend on a new Claude Code internal, add
+When you make something in agent-rig depend on a new Claude Code internal, add
 a row here and a matching test. The rule of thumb: if a Claude Code release
 could break it and you would not find out until a user hit the bug, it belongs
 in the contract.

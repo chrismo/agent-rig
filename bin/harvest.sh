@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-# Harvest permissions from ~/.claude/settings.json back into claude-rig .sup files
+# Harvest permissions from ~/.claude/settings.json back into agent-rig .sup files
 # Usage: harvest [--dry-run]
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/config.sh"

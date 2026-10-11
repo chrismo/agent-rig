@@ -1,4 +1,4 @@
-# claude-rig
+# agent-rig
 
 Claude Code hooks, statusline, skills, and configuration.
 
@@ -75,7 +75,7 @@ touch ~/.claude/lemmalog/enabled    # on
 rm    ~/.claude/lemmalog/enabled    # off
 ```
 
-`CLAUDE_RIG_LEMMA_ENABLED=0` or `=1` overrides the marker for one session.
+`AGENT_RIG_LEMMA_ENABLED=0` or `=1` overrides the marker for one session.
 `bin/lemma-info` reports which state you are in, plus engine, MCP registration,
 store size and queue depth — it works with nothing installed at all.
 

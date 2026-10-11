@@ -1,6 +1,6 @@
-# claude-rig shell entrypoint — source this from ~/.zshrc:
+# agent-rig shell entrypoint — source this from ~/.zshrc:
 #
-#     source ~/modev/claude-rig/shell/rig.zsh
+#     source ~/modev/agent-rig/shell/rig.zsh
 #
 # Everything here exists for one reason: a subprocess cannot cd its caller's
 # shell. The real work lives in bin/wt-new and bin/wt, which are ordinary

@@ -28,7 +28,7 @@ DEV_ROOT="${DEV_ROOT:-$HOME/dev}"
 # ── pure helpers (unit-tested in gt.bats) ─────────────────────────────────────
 
 # Extract the "dir" leaf from a menu title.
-#   "🔵 claude-rig (main)"  -> "claude-rig"
+#   "🔵 agent-rig (main)"  -> "agent-rig"
 #   "dscout (main)"         -> "dscout"
 #   "⚪ dscout-finance"     -> "dscout-finance"
 #   "devops-2081-foo"       -> "devops-2081-foo"

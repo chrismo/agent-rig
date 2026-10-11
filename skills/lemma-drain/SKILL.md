@@ -37,7 +37,7 @@ message is fully explained by its own diff, there is no fact in it.
 
 ## Procedure
 
-1. **Read the queue.** `${CLAUDE_RIG_LEMMA_QUEUE:-~/.claude/lemmalog/pending.tsv}`
+1. **Read the queue.** `${AGENT_RIG_LEMMA_QUEUE:-~/.claude/lemmalog/pending.tsv}`
    — TSV: repo, short sha, epoch, subject. Work only on rows for the current repo
    unless asked otherwise.
 
@@ -55,12 +55,12 @@ message is fully explained by its own diff, there is no fact in it.
 
        lemmalog-store --ruled_out--> per-repo-stores
        per-repo-stores --because--> mcp-path-read-once-at-startup
-       lemmalog-store --in_repo--> claude-rig
-       lemmalog-store --located--> claude-rig-61fd789
+       lemmalog-store --in_repo--> agent-rig
+       lemmalog-store --located--> agent-rig-61fd789
 
    Note the subject is the *topic*, not the repo. Putting the repo on the left of
    every fact collides: `ruled_out` is not exclusive, so a second
-   `claude-rig --ruled_out--> ...` escalates against the first.
+   `agent-rig --ruled_out--> ...` escalates against the first.
 
    Anchor provenance with `<entity> --located--> <repo>-<sha>` so the proof tree
    leads back to something readable. **Not `repo@sha`** — `observe` validates
@@ -102,7 +102,7 @@ message is fully explained by its own diff, there is no fact in it.
 If `lemmalog_*` is not available, say so, name the fix, and stop — do not
 half-drain into a file nobody reads. The fix is one command:
 
-    ~/modev/claude-rig/bin/lemma-install
+    ~/modev/agent-rig/bin/lemma-install
 
 It clones and builds the engine (a Rust binary, `--features mcp`) and registers
 the MCP server at **user scope**, so the tools are there in every repo — which
@@ -110,7 +110,7 @@ matters, because `hooks/lemma-commit.sh` queues commits from every repo, and a
 registration scoped to one project leaves the rest permanently undrainable.
 
 The engine lives outside this repo and is built per machine, so a clone of
-claude-rig on another machine has the hooks but no engine. That is the expected
+agent-rig on another machine has the hooks but no engine. That is the expected
 state on a new machine, not a fault: the queue fills correctly and the
 SessionStart brief keeps reporting it until the engine exists.
 

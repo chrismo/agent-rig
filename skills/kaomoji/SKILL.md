@@ -104,7 +104,7 @@ whole catalog above, so just pick the face directly.
 
 ## Adding faces
 
-Faces live in the `MOODS` array in `bin/kaomoji` in the claude-rig repo — edit
+Faces live in the `MOODS` array in `bin/kaomoji` in the agent-rig repo — edit
 there, never `~/.local/bin/kaomoji` (a symlink).
 
 The catalog above is **generated**, not hand-maintained. After editing the

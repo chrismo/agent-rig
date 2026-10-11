@@ -10,7 +10,7 @@ missing:
 - Project-level settings (sandbox, permissions)
 - Common CLAUDE.md preferences (git commit format, etc.)
 
-## Current Setup (claude-rig repo)
+## Current Setup (agent-rig repo)
 
 | Component | Location | Scope |
 |-----------|----------|-------|
@@ -23,8 +23,8 @@ missing:
 
 ## Design Decisions
 
-1. **Symlinks back to claude-rig repo are acceptable** - centralized updates,
-   claude-rig must be cloned
+1. **Symlinks back to agent-rig repo are acceptable** - centralized updates,
+   agent-rig must be cloned
 2. **CLAUDE.md: Include directive approach** - add reference to shared
    preferences file rather than injection
 3. **Profiles (superdb vs web, etc.)**: Future consideration, not v1
@@ -34,7 +34,7 @@ missing:
 ### Directory Structure
 
 ```
-claude-rig/
+agent-rig/
   install/
     claude-bundle              # Main CLI script (symlink to ~/bin)
     lib/
@@ -58,7 +58,7 @@ claude-bundle init [--full]
 
 1. Create `.claude/` directory if needed
 2. Copy `settings.local.json` template (sandbox defaults)
-3. Symlink common agents from claude-rig repo
+3. Symlink common agents from agent-rig repo
 4. Handle CLAUDE.md:
    - If exists: optionally append include directive
    - If not: create from minimal template with include
@@ -69,7 +69,7 @@ claude-bundle init [--full]
 claude-bundle status
 ```
 
-Shows what's installed, symlinks vs copies, claude-rig connection status.
+Shows what's installed, symlinks vs copies, agent-rig connection status.
 
 ### CLAUDE.md Include Approach
 
@@ -77,7 +77,7 @@ Instead of injecting content, add a directive at the top of CLAUDE.md:
 
 ```markdown
 For additional preferences, also follow:
-/path/to/claude-rig/install/preferences/common.md
+/path/to/agent-rig/install/preferences/common.md
 ```
 
 The `preferences/common.md` file contains things like:
@@ -160,7 +160,7 @@ This allows:
 - [ ] Add to PATH (update claude-installer.sh or document manual step)
 
 ### Phase 4: Agent Symlinks
-- [ ] Add agent symlinking to init (link claude-rig agents)
+- [ ] Add agent symlinking to init (link agent-rig agents)
 - [ ] Handle case where agent already exists
 
 ### Phase 5: Documentation

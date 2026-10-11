@@ -11,7 +11,7 @@ bats_require_minimum_version 1.5.0
 # symlink — only the package list is portable.
 #
 # pi/packages.txt is that portable half, and this script is the one-way apply:
-# manifest -> machine. It never removes, because the manifest is claude-rig's
+# manifest -> machine. It never removes, because the manifest is agent-rig's
 # opinion and the machine may have packages installed for a reason this repo
 # knows nothing about; those are reported so they can be adopted deliberately.
 #
@@ -22,8 +22,8 @@ bats_require_minimum_version 1.5.0
 S="$BATS_TEST_DIRNAME/pi-sync"
 
 setup() {
-  export CLAUDE_RIG_PI_SETTINGS="$BATS_TEST_TMPDIR/pi-settings.json"
-  export CLAUDE_RIG_PI_MANIFEST="$BATS_TEST_TMPDIR/packages.txt"
+  export AGENT_RIG_PI_SETTINGS="$BATS_TEST_TMPDIR/pi-settings.json"
+  export AGENT_RIG_PI_MANIFEST="$BATS_TEST_TMPDIR/packages.txt"
 
   STUB="$BATS_TEST_TMPDIR/stub"
   mkdir -p "$STUB"
@@ -55,8 +55,8 @@ only_stubs() {
   export PATH="$STUB:/usr/bin:/bin"
 }
 
-settings() { printf '%s\n' "$1" > "$CLAUDE_RIG_PI_SETTINGS"; }
-manifest() { printf '%s\n' "$1" > "$CLAUDE_RIG_PI_MANIFEST"; }
+settings() { printf '%s\n' "$1" > "$AGENT_RIG_PI_SETTINGS"; }
+manifest() { printf '%s\n' "$1" > "$AGENT_RIG_PI_MANIFEST"; }
 
 installed_sources() {
   grep '^pi install' "$STUB_LOG" 2>/dev/null | awk '{print $3}'
@@ -74,14 +74,14 @@ installed_sources() {
 
 @test "fails loudly when the manifest is missing" {
   stub_pi
-  rm -f "$CLAUDE_RIG_PI_MANIFEST"
+  rm -f "$AGENT_RIG_PI_MANIFEST"
   run -1 "$S"
-  [[ "$output" == *"$CLAUDE_RIG_PI_MANIFEST"* ]]
+  [[ "$output" == *"$AGENT_RIG_PI_MANIFEST"* ]]
 }
 
 @test "defaults to the manifest shipped in the repo" {
   stub_pi
-  unset CLAUDE_RIG_PI_MANIFEST
+  unset AGENT_RIG_PI_MANIFEST
   settings '{"packages":[]}'
   # Exit 1 because this temp settings file lists nothing: every package in the
   # repo manifest reads as missing. Naming one of them is what proves the repo
@@ -95,7 +95,7 @@ installed_sources() {
   # $BASH_SOURCE is the symlink, not the file in the repo. Resolving only the
   # link's *directory* lands in ~/.local/bin and the manifest is not found.
   stub_pi
-  unset CLAUDE_RIG_PI_MANIFEST
+  unset AGENT_RIG_PI_MANIFEST
   settings '{"packages":[]}'
   ln -s "$S" "$BATS_TEST_TMPDIR/pi-sync"
   run -1 "$BATS_TEST_TMPDIR/pi-sync" --check
@@ -133,7 +133,7 @@ npm:pi-subagents'
 @test "treats a missing settings file as a machine with no packages" {
   stub_pi
   manifest 'npm:pi-web-access'
-  rm -f "$CLAUDE_RIG_PI_SETTINGS"
+  rm -f "$AGENT_RIG_PI_SETTINGS"
   run -0 "$S"
   [[ "$(installed_sources)" == "npm:pi-web-access" ]]
 }
@@ -166,13 +166,13 @@ npm:pi-web-access   # trailing note
   manifest 'npm:pi-web-access'
   settings 'not json at all'
   run -1 "$S"
-  [[ "$output" == *"$CLAUDE_RIG_PI_SETTINGS"* ]] || false
+  [[ "$output" == *"$AGENT_RIG_PI_SETTINGS"* ]] || false
   [ ! -s "$STUB_LOG" ]
 }
 
 @test "reads a manifest whose last line has no trailing newline" {
   stub_pi
-  printf 'npm:pi-web-access' > "$CLAUDE_RIG_PI_MANIFEST"
+  printf 'npm:pi-web-access' > "$AGENT_RIG_PI_MANIFEST"
   settings '{"packages":[]}'
   run -0 "$S"
   [[ "$(installed_sources)" == "npm:pi-web-access" ]]

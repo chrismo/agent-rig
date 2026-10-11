@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Shared config for claude-rig scripts
+# Shared config for agent-rig scripts
 # Source this file: source "$(dirname "$0")/../lib/config.sh"
 
 # Resolve REPO_DIR from this file's location (lib/ is one level under repo root)
@@ -51,4 +51,4 @@ OPENCODE_AGENTS_DEST="$OPENCODE_CONFIG_DIR/agents"
 # ~/.config/mcp/mcp.json — it does not honour XDG_CONFIG_HOME — so this path is
 # literal, with an override for the test suite.
 MCP_SHARED_SRC="$REPO_DIR/pi/mcp.json"
-MCP_SHARED_DEST="${CLAUDE_RIG_MCP_SHARED_CONFIG:-$HOME/.config/mcp/mcp.json}"
+MCP_SHARED_DEST="${AGENT_RIG_MCP_SHARED_CONFIG:-$HOME/.config/mcp/mcp.json}"

@@ -50,7 +50,7 @@ Claude reaches the same engine through the MCP tools. `bin/lemma-install` builds
 it and registers the server at user scope:
 
 ```sh
-~/modev/claude-rig/bin/lemma-install
+~/modev/agent-rig/bin/lemma-install
 ```
 
 That points the server at `~/.claude/lemmalog/store.snapshot` — one global store

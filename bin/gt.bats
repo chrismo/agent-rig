@@ -22,9 +22,9 @@ setup() {
 # The leaf is the <dir>, used to resolve ~/dev/<leaf>.
 
 @test "gt_title_leaf strips status emoji and branch suffix" {
-  run gt_title_leaf "🔵 claude-rig (main)"
+  run gt_title_leaf "🔵 agent-rig (main)"
   [ "$status" -eq 0 ]
-  [[ "$output" == "claude-rig" ]]
+  [[ "$output" == "agent-rig" ]]
 }
 
 @test "gt_title_leaf handles a title with no emoji" {
@@ -86,11 +86,11 @@ setup() {
 
 @test "gt_preview shows the resolved path for a known worktree" {
   DEV_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/gt-dev.XXXXXX")"
-  mkdir -p "$DEV_ROOT/claude-rig"
+  mkdir -p "$DEV_ROOT/agent-rig"
 
-  run gt_preview "🔵 claude-rig (main)"
+  run gt_preview "🔵 agent-rig (main)"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"$DEV_ROOT/claude-rig"* ]] || false
+  [[ "$output" == *"$DEV_ROOT/agent-rig"* ]] || false
 
   rm -rf "$DEV_ROOT"
 }

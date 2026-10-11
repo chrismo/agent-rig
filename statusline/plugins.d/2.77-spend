@@ -35,7 +35,7 @@
 # status line missing a segment.
 
 # Edit this when the script moves to the litellm stack.
-UPSTREAM="${CLAUDE_RIG_SPEND_STATUSLINE:-$HOME/dev/claude-plugins/scripts/claude-daily-spend-statusline.sh}"
+UPSTREAM="${AGENT_RIG_SPEND_STATUSLINE:-$HOME/dev/claude-plugins/scripts/claude-daily-spend-statusline.sh}"
 
 [[ -f "$UPSTREAM" && -x "$UPSTREAM" ]] || exit 0
 
@@ -45,7 +45,7 @@ UPSTREAM="${CLAUDE_RIG_SPEND_STATUSLINE:-$HOME/dev/claude-plugins/scripts/claude
 # renders on every keystroke: a hang wedges the prompt instead of merely
 # blanking a segment.
 timeout_bin=$(command -v timeout || command -v gtimeout)
-timeout_secs="${CLAUDE_RIG_SPEND_TIMEOUT:-10}"
+timeout_secs="${AGENT_RIG_SPEND_TIMEOUT:-10}"
 
 if [[ -n "$timeout_bin" ]]; then
   segment=$("$timeout_bin" "$timeout_secs" "$UPSTREAM" 2>/dev/null) || exit 0

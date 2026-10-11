@@ -1,5 +1,5 @@
 {
-  "//": "Shared MCP servers, tool-agnostic format. Tracked in claude-rig and symlinked to ~/.config/mcp/mcp.json by install.sh. pi reads it through pi-mcp-adapter (lowest precedence, so ~/.pi/agent/mcp.json and project .mcp.json still win). Only servers that are portable across machines belong here: the adapter interpolates ${VAR} in args and env values but takes command literally, so anything launched from a per-machine build path (lemmalog) is registered locally instead.",
+  "//": "Shared MCP servers, tool-agnostic format. Tracked in agent-rig and symlinked to ~/.config/mcp/mcp.json by install.sh. pi reads it through pi-mcp-adapter (lowest precedence, so ~/.pi/agent/mcp.json and project .mcp.json still win). Only servers that are portable across machines belong here: the adapter interpolates ${VAR} in args and env values but takes command literally, so anything launched from a per-machine build path (lemmalog) is registered locally instead.",
   "mcpServers": {
     "superdb": {
       "command": "npx",

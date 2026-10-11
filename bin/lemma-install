@@ -40,8 +40,8 @@ set -uo pipefail
 # overrides them to keep off the network and out of the user's config.
 SRC="${LEMMALOG_SRC:-$HOME/modev/lemmalog}"
 REPO_URL="${LEMMALOG_REPO_URL:-https://github.com/JordyZomer/lemmalog.git}"
-SNAPSHOT="${CLAUDE_RIG_LEMMA_SNAPSHOT:-$HOME/.claude/lemmalog/store.snapshot}"
-CLAUDE_JSON="${CLAUDE_RIG_CLAUDE_JSON:-$HOME/.claude.json}"
+SNAPSHOT="${AGENT_RIG_LEMMA_SNAPSHOT:-$HOME/.claude/lemmalog/store.snapshot}"
+CLAUDE_JSON="${AGENT_RIG_CLAUDE_JSON:-$HOME/.claude.json}"
 
 BIN="$SRC/target/release/lemmalog-mcp"
 
@@ -100,7 +100,7 @@ build() {
 #
 # User scope, deliberately. `claude mcp add` defaults to LOCAL scope, which is
 # what produced the project-scoped entry this repo shipped with — lemmalog
-# reachable only inside claude-rig, while hooks/lemma-commit.sh queues commits
+# reachable only inside agent-rig, while hooks/lemma-commit.sh queues commits
 # from every repo. That left rows for other repos permanently undrainable.
 # skills/lemma-drain/SKILL.md is explicit that this is one global store with the
 # repo as a fact dimension, so the registration should match.

@@ -5,7 +5,7 @@ bats_require_minimum_version 1.5.0
 # Test suite for bin/lemma-install.
 #
 # The lemmalog engine lives OUTSIDE this repo and is built per machine, so a
-# fresh clone of claude-rig has the hooks but no engine. Traced on a simulated
+# fresh clone of agent-rig has the hooks but no engine. Traced on a simulated
 # fresh machine: hooks/lemma-commit.sh queues fine (it has no dependency on
 # lemmalog at all) and hooks/lemma-brief.sh nags at every SessionStart — but
 # /lemma-drain, the only thing that can clear the queue, cannot run. The result
@@ -26,8 +26,8 @@ I="$BATS_TEST_DIRNAME/lemma-install"
 setup() {
   export LEMMALOG_SRC="$BATS_TEST_TMPDIR/lemmalog"
   export LEMMALOG_REPO_URL="https://example.invalid/lemmalog.git"
-  export CLAUDE_RIG_LEMMA_SNAPSHOT="$BATS_TEST_TMPDIR/store.snapshot"
-  export CLAUDE_RIG_CLAUDE_JSON="$BATS_TEST_TMPDIR/claude.json"
+  export AGENT_RIG_LEMMA_SNAPSHOT="$BATS_TEST_TMPDIR/store.snapshot"
+  export AGENT_RIG_CLAUDE_JSON="$BATS_TEST_TMPDIR/claude.json"
 
   # Stubs go first on PATH. Each one logs its argv so a test can assert on how
   # it was called, which is the only observable this script has — everything it
@@ -195,7 +195,7 @@ EOF
   pretend_built
 
   run "$I"
-  [[ "$(calls)" == *"LEMMALOG_MCP_PATH=$CLAUDE_RIG_LEMMA_SNAPSHOT"* ]]
+  [[ "$(calls)" == *"LEMMALOG_MCP_PATH=$AGENT_RIG_LEMMA_SNAPSHOT"* ]]
 }
 
 @test "registers the built binary by absolute path" {
@@ -213,7 +213,7 @@ EOF
   stub claude
   pretend_cloned
   pretend_built
-  export CLAUDE_RIG_LEMMA_SNAPSHOT="$BATS_TEST_TMPDIR/deep/nested/store.snapshot"
+  export AGENT_RIG_LEMMA_SNAPSHOT="$BATS_TEST_TMPDIR/deep/nested/store.snapshot"
 
   run "$I"
   [ -d "$BATS_TEST_TMPDIR/deep/nested" ]
@@ -223,7 +223,7 @@ EOF
 #
 # A project-scoped entry wins over a user-scoped one inside that project. The
 # machine this was written on had exactly that: lemmalog registered local to
-# claude-rig, pointing at a snapshot that did not exist. Registering at user
+# agent-rig, pointing at a snapshot that did not exist. Registering at user
 # scope without saying so would leave the old entry silently in charge.
 
 @test "warns when a project-scoped registration would shadow the new one" {
@@ -231,13 +231,13 @@ EOF
   stub claude
   pretend_cloned
   pretend_built
-  cat > "$CLAUDE_RIG_CLAUDE_JSON" <<'EOF'
-{"projects":{"/Users/someone/modev/claude-rig":{"mcpServers":{"lemmalog":{"type":"stdio"}}}}}
+  cat > "$AGENT_RIG_CLAUDE_JSON" <<'EOF'
+{"projects":{"/Users/someone/modev/agent-rig":{"mcpServers":{"lemmalog":{"type":"stdio"}}}}}
 EOF
 
   run "$I"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"claude-rig"* ]] || false
+  [[ "$output" == *"agent-rig"* ]] || false
   [[ "$output" == *"mcp remove"* ]]
 }
 
@@ -246,7 +246,7 @@ EOF
   stub claude
   pretend_cloned
   pretend_built
-  echo '{"projects":{}}' > "$CLAUDE_RIG_CLAUDE_JSON"
+  echo '{"projects":{}}' > "$AGENT_RIG_CLAUDE_JSON"
 
   run "$I"
   [ "$status" -eq 0 ]
@@ -258,7 +258,7 @@ EOF
   stub claude
   pretend_cloned
   pretend_built
-  export CLAUDE_RIG_CLAUDE_JSON="$BATS_TEST_TMPDIR/nope.json"
+  export AGENT_RIG_CLAUDE_JSON="$BATS_TEST_TMPDIR/nope.json"
 
   run "$I"
   [ "$status" -eq 0 ]
@@ -304,8 +304,8 @@ EOF
 @test "defaults to the same snapshot path hooks/lemma-brief.sh reads" {
   local brief="$BATS_TEST_DIRNAME/../hooks/lemma-brief.sh"
   local install_default brief_default
-  install_default=$(grep -o 'CLAUDE_RIG_LEMMA_SNAPSHOT:-[^}]*' "$I" | head -1)
-  brief_default=$(grep -o 'CLAUDE_RIG_LEMMA_SNAPSHOT:-[^}]*' "$brief" | head -1)
+  install_default=$(grep -o 'AGENT_RIG_LEMMA_SNAPSHOT:-[^}]*' "$I" | head -1)
+  brief_default=$(grep -o 'AGENT_RIG_LEMMA_SNAPSHOT:-[^}]*' "$brief" | head -1)
 
   [ -n "$install_default" ]
   [ "$install_default" = "$brief_default" ]
@@ -314,7 +314,7 @@ EOF
 @test "the default store is not named for the contract experiment" {
   # experiments/lemmalog models one repo's internals contract. The MCP store is
   # a global one keyed by repo, per skills/lemma-drain/SKILL.md — naming it
-  # claude-rig-contract implies a per-repo store that does not exist.
-  run grep -c 'claude-rig-contract' "$I"
+  # agent-rig-contract implies a per-repo store that does not exist.
+  run grep -c 'agent-rig-contract' "$I"
   [ "$output" -eq 0 ]
 }

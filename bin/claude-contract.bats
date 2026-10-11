@@ -4,7 +4,7 @@ bats_require_minimum_version 1.5.0
 
 # The internals contract.
 #
-# claude-rig reads several things Claude Code does not expose as a supported
+# agent-rig reads several things Claude Code does not expose as a supported
 # API. None of it is guaranteed to survive a point release. This suite asserts
 # that each load-bearing assumption still holds against the CURRENTLY INSTALLED
 # build, so a breaking change surfaces here instead of as a mysteriously empty
@@ -241,7 +241,7 @@ sys.exit(0 if ok else 1)
 
 @test "E1: the session registry directory is writable" {
   [ -d "$SESSIONS_DIR" ] || skip "no registry at $SESSIONS_DIR"
-  local probe="$SESSIONS_DIR/.claude-rig-write-probe"
+  local probe="$SESSIONS_DIR/.agent-rig-write-probe"
   echo x > "$probe" 2>/dev/null || {
     echo "cannot write $SESSIONS_DIR — claude-peer --ask cannot register" >&2
     return 1; }

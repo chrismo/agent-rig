@@ -17,17 +17,17 @@ bats_require_minimum_version 1.5.0
 # Why the script filters instead of a settings-level `if:` — a hook entry can
 # carry `if: "Bash(git commit *)"` and never even spawn on other commands, but
 # that is a prefix STRING match with no shell parsing. Real commits in this repo
-# look like `cd ~/modev/claude-rig && git commit ...`, which it would miss
+# look like `cd ~/modev/agent-rig && git commit ...`, which it would miss
 # entirely. Hence the `cd x && git commit` test below: it is the common case,
 # not an edge case.
 
 HOOK="$BATS_TEST_DIRNAME/lemma-commit.sh"
 
 setup() {
-  export CLAUDE_RIG_LEMMA_QUEUE="$BATS_TEST_TMPDIR/pending.tsv"
+  export AGENT_RIG_LEMMA_QUEUE="$BATS_TEST_TMPDIR/pending.tsv"
   # The loop ships OFF (see "the enable gate" below). Turn it on for the suite
   # so every test here goes on exercising the real hook rather than the gate.
-  export CLAUDE_RIG_LEMMA_ENABLED=1
+  export AGENT_RIG_LEMMA_ENABLED=1
 
   # A real repo with one real commit, so `git log -1` has something to read.
   REPO="$BATS_TEST_TMPDIR/demo-repo"
@@ -53,7 +53,7 @@ fire() {
   fire 'git commit -m wip'
   [ "$status" -eq 0 ]
 
-  run cut -f1,4 "$CLAUDE_RIG_LEMMA_QUEUE"
+  run cut -f1,4 "$AGENT_RIG_LEMMA_QUEUE"
   [ "$output" = "demo-repo"$'\t'"the subject line" ]
 }
 
@@ -63,7 +63,7 @@ fire() {
   fire "cd $REPO && git commit -q -F -"
   [ "$status" -eq 0 ]
 
-  run cut -f1 "$CLAUDE_RIG_LEMMA_QUEUE"
+  run cut -f1 "$AGENT_RIG_LEMMA_QUEUE"
   [ "$output" = "demo-repo" ]
 }
 
@@ -72,7 +72,7 @@ fire() {
 
   local expected
   expected=$(git -C "$REPO" log -1 --format=%h)
-  run cut -f2 "$CLAUDE_RIG_LEMMA_QUEUE"
+  run cut -f2 "$AGENT_RIG_LEMMA_QUEUE"
   [ "$output" = "$expected" ]
 }
 
@@ -81,7 +81,7 @@ fire() {
   mkdir -p "$REPO/sub/deeper"
   fire 'git commit -m wip' "$REPO/sub/deeper"
 
-  run cut -f1 "$CLAUDE_RIG_LEMMA_QUEUE"
+  run cut -f1 "$AGENT_RIG_LEMMA_QUEUE"
   [ "$output" = "demo-repo" ]
 }
 
@@ -96,20 +96,20 @@ fire() {
 @test "ignores a Bash call that is not a commit" {
   fire 'ls -la'
   [ "$status" -eq 0 ]
-  [ ! -s "$CLAUDE_RIG_LEMMA_QUEUE" ]
+  [ ! -s "$AGENT_RIG_LEMMA_QUEUE" ]
 }
 
 @test "ignores read-only git commands that merely mention commits" {
   fire 'git log --format=%H'
   [ "$status" -eq 0 ]
-  [ ! -s "$CLAUDE_RIG_LEMMA_QUEUE" ]
+  [ ! -s "$AGENT_RIG_LEMMA_QUEUE" ]
 }
 
 @test "does not queue twice when a commit fails and leaves HEAD unmoved" {
   fire 'git commit -m first'
   fire 'git commit -m "nothing staged"'
 
-  run wc -l < "$CLAUDE_RIG_LEMMA_QUEUE"
+  run wc -l < "$AGENT_RIG_LEMMA_QUEUE"
   [ "${output// /}" -eq 1 ]
 }
 
@@ -131,7 +131,7 @@ fire() {
   mkdir -p "$BATS_TEST_TMPDIR/plain"
   fire 'git commit -m wip' "$BATS_TEST_TMPDIR/plain"
   [ "$status" -eq 0 ]
-  [ ! -s "$CLAUDE_RIG_LEMMA_QUEUE" ]
+  [ ! -s "$AGENT_RIG_LEMMA_QUEUE" ]
 }
 
 @test "exits 0 when the cwd does not exist" {
@@ -142,7 +142,7 @@ fire() {
 # --- the enable gate -----------------------------------------------------
 #
 # The loop is OFF unless ~/.claude/lemmalog/enabled exists. A clone of
-# claude-rig on another machine gets the hooks and does nothing with them until
+# agent-rig on another machine gets the hooks and does nothing with them until
 # someone opts in — the right default for a repo deployed to several machines
 # with different appetites for automation.
 #
@@ -153,28 +153,28 @@ fire() {
 # suite turns it on explicitly and goes on testing the real behaviour.
 
 @test "queues nothing when the enable marker is absent" {
-  export CLAUDE_RIG_LEMMA_ENABLED=""
-  export CLAUDE_RIG_LEMMA_MARKER="$BATS_TEST_TMPDIR/absent"
+  export AGENT_RIG_LEMMA_ENABLED=""
+  export AGENT_RIG_LEMMA_MARKER="$BATS_TEST_TMPDIR/absent"
 
   fire "git commit -m x"
   [ "$status" -eq 0 ]
-  [ ! -s "$CLAUDE_RIG_LEMMA_QUEUE" ]
+  [ ! -s "$AGENT_RIG_LEMMA_QUEUE" ]
 }
 
 @test "queues when the marker file exists" {
-  export CLAUDE_RIG_LEMMA_ENABLED=""
-  export CLAUDE_RIG_LEMMA_MARKER="$BATS_TEST_TMPDIR/on"
-  : > "$CLAUDE_RIG_LEMMA_MARKER"
+  export AGENT_RIG_LEMMA_ENABLED=""
+  export AGENT_RIG_LEMMA_MARKER="$BATS_TEST_TMPDIR/on"
+  : > "$AGENT_RIG_LEMMA_MARKER"
 
   fire "git commit -m x"
-  [ -s "$CLAUDE_RIG_LEMMA_QUEUE" ]
+  [ -s "$AGENT_RIG_LEMMA_QUEUE" ]
 }
 
 @test "an explicit env 0 beats the marker, so one session can opt out" {
-  export CLAUDE_RIG_LEMMA_ENABLED=0
-  export CLAUDE_RIG_LEMMA_MARKER="$BATS_TEST_TMPDIR/on"
-  : > "$CLAUDE_RIG_LEMMA_MARKER"
+  export AGENT_RIG_LEMMA_ENABLED=0
+  export AGENT_RIG_LEMMA_MARKER="$BATS_TEST_TMPDIR/on"
+  : > "$AGENT_RIG_LEMMA_MARKER"
 
   fire "git commit -m x"
-  [ ! -s "$CLAUDE_RIG_LEMMA_QUEUE" ]
+  [ ! -s "$AGENT_RIG_LEMMA_QUEUE" ]
 }

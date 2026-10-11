@@ -138,16 +138,16 @@ setup() {
 @test "pi project label comes from the session header's cwd, not the encoded dir" {
   # pi wraps its directory names in a double dash and flattens '/' to '-', so
   # the dir name alone can't recover a project whose own name has a dash.
-  local dir="$BATS_TEST_TMPDIR/pi-sessions/--Users-tester-modev-claude-rig--"
+  local dir="$BATS_TEST_TMPDIR/pi-sessions/--Users-tester-modev-agent-rig--"
   mkdir -p "$dir"
   cat > "$dir/2026-01-01_abc.jsonl" <<-EOF
-	{"type":"session","version":3,"id":"pi-session-2","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","cwd":"/Users/tester/modev/claude-rig"}
+	{"type":"session","version":3,"id":"pi-session-2","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","cwd":"/Users/tester/modev/agent-rig"}
 	{"type":"message","message":{"role":"user","content":[{"type":"text","text":"fix the fivetran connector"}]},"timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
 	EOF
 
   run search_pi_sessions "fivetran" 30 "$BATS_TEST_TMPDIR/pi-sessions"
   [ "$status" -eq 0 ]
-  [[ "$output" == *'"project":"claude-rig"'* ]]
+  [[ "$output" == *'"project":"agent-rig"'* ]]
 }
 
 @test "pi prompt text survives a turn carrying more than one block kind" {

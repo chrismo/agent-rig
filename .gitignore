@@ -5,7 +5,7 @@ tmp/
 
 # Contract results are per-machine observation, not repo content: each machine
 # runs the suite against whatever Claude Code build it happens to be on, and
-# claude-rig is deployed to several. Committing them would conflict on every
+# agent-rig is deployed to several. Committing them would conflict on every
 # pull for no gain. hooks/internals-drift.sh degrades to a plain version
 # comparison when the file is absent, which is what a fresh clone should see.
 docs/contract-results.tsv

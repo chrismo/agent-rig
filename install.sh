@@ -6,6 +6,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/config.sh"
 
+# A link left by the installer in a checkout moved since the claude-rig rename.
+# Ownership checks compare against the current repo path, so these would
+# otherwise be read as someone else's. Delete once every machine has re-run.
+left_by_rename() {
+  [[ -L "$1" ]] && [[ ! -e "$1" ]] && [[ "$(readlink "$1")" == */claude-rig/* ]]
+}
+
 # Ensure .claude directory exists
 mkdir -p "$CLAUDE_DIR"
 
@@ -46,23 +53,23 @@ echo "✓ Installed statusLine configuration"
 echo "  Command: bash $STATUSLINE_SCRIPT"
 echo ""
 
-# Merge claude-rig hooks into settings.json.
+# Merge agent-rig hooks into settings.json.
 #
 # Pattern: `values {...{hooks:{}}, ...this} | values {...this, hooks: {...this.hooks, Y: [...]}} | drop hooks.X`
 #   - `values {...{hooks:{}}, ...this}` defaults hooks to {} only when it is absent:
 #     the spread of `this` comes second, so a real hooks record wins. Do NOT use
 #     `put hooks := {}` here — put REPLACES the field rather than merging into it,
 #     which silently wiped every user-managed hook event on install.
-#   - `...this.hooks` preserves any hook event types claude-rig does NOT manage (e.g.,
+#   - `...this.hooks` preserves any hook event types agent-rig does NOT manage (e.g.,
 #     user's own SubagentStop, PreCompact, etc.).
-#   - Named keys after the spread (Y, Z, ...) override per-event-type: claude-rig owns
+#   - Named keys after the spread (Y, Z, ...) override per-event-type: agent-rig owns
 #     those event types entirely, replacing whatever was there.
-#   - `drop hooks.X` removes hook event types claude-rig used to manage but no longer
+#   - `drop hooks.X` removes hook event types agent-rig used to manage but no longer
 #     does (otherwise stale entries would linger forever — spread can't subtract).
 #     It runs LAST, after the named keys above have guaranteed hooks is non-empty:
 #     dropping the sole field of a nested record makes super emit no record at all,
 #     which would write an empty settings.json.
-# When retiring a hook event type from claude-rig, ADD it to the `drop` list so it
+# When retiring a hook event type from agent-rig, ADD it to the `drop` list so it
 # disappears from existing settings.json on next install.
 # tab-status --title sets the Ghostty tab title itself (resolves the pane's pts
 # and uses Ghostty's set_tab_title action via osascript). It must NOT redirect
@@ -263,7 +270,7 @@ if [[ -f "$SANDBOX_ALLOW_WRITE" ]]; then
   echo ""
 fi
 
-# Clean up deprecated ~/.claude/commands/ entries that claude-rig installed
+# Clean up deprecated ~/.claude/commands/ entries that agent-rig installed
 # (only remove entries matching our skill names, not other tools' files)
 LEGACY_COMMANDS_DIR="$CLAUDE_DIR/commands"
 if [[ -d "$LEGACY_COMMANDS_DIR" ]] && [[ -d "$SKILLS_SRC" ]]; then
@@ -339,7 +346,7 @@ if [[ -d "$SKILLS_SRC" ]]; then
   # Scope to broken links pointing into $SKILLS_SRC so the user's own symlinks
   # (pointing elsewhere) are never touched.
   for dest in "$SKILLS_DEST"/*; do
-    if [[ -L "$dest" ]] && [[ ! -e "$dest" ]] && [[ "$(readlink "$dest")" == "$SKILLS_SRC/"* ]]; then
+    if [[ -L "$dest" ]] && [[ ! -e "$dest" ]] && { [[ "$(readlink "$dest")" == "$SKILLS_SRC/"* ]] || left_by_rename "$dest"; }; then
       rm "$dest"
     fi
   done
@@ -382,13 +389,13 @@ if [[ -d "$PI_AGENT_DIR" ]]; then
     # it. `rm` and not `rm -rf`: once only a symlink is ever removed, the -rf
     # buys nothing and is the part that makes a mistake unrecoverable.
     if [[ -L "$dest" ]]; then
-      if [[ "$(readlink "$dest")" != "$SKILLS_SRC/"* ]]; then
+      if [[ "$(readlink "$dest")" != "$SKILLS_SRC/"* ]] && ! left_by_rename "$dest"; then
         echo "⚠ $dest links outside this repo — leaving it alone."
         continue
       fi
       rm "$dest"
     elif [[ -e "$dest" ]]; then
-      echo "⚠ $dest already exists and is not a claude-rig symlink — leaving it alone."
+      echo "⚠ $dest already exists and is not a agent-rig symlink — leaving it alone."
       continue
     fi
     ln -s "$src" "$dest"
@@ -400,7 +407,7 @@ if [[ -d "$PI_AGENT_DIR" ]]; then
   # else — the user's own, another tool's, a pi package's — are never touched.
   for dest in "$PI_SKILLS_DEST"/*; do
     [[ -L "$dest" ]] || continue
-    [[ "$(readlink "$dest")" == "$SKILLS_SRC/"* ]] || continue
+    [[ "$(readlink "$dest")" == "$SKILLS_SRC/"* ]] || left_by_rename "$dest" || continue
     name=$(basename "$dest")
     keep=0
     for skill in "${PI_SKILLS[@]}"; do
@@ -418,6 +425,9 @@ if [[ -d "$PI_AGENT_DIR" ]]; then
   mkdir -p "$(dirname "$footer_dest")"
   if [[ -L "$footer_dest" ]] && [[ "$(readlink "$footer_dest")" == "$footer_src" ]]; then
     :
+  elif left_by_rename "$footer_dest"; then
+    rm "$footer_dest"
+    ln -s "$footer_src" "$footer_dest"
   elif [[ ! -e "$footer_dest" ]] && [[ ! -L "$footer_dest" ]]; then
     ln -s "$footer_src" "$footer_dest"
   else
@@ -443,7 +453,7 @@ fi
 if [[ -d "$PI_AGENT_DIR" ]] && [[ -f "$MCP_SHARED_SRC" ]]; then
   if [[ -e "$MCP_SHARED_DEST" ]] && [[ ! -L "$MCP_SHARED_DEST" ]]; then
     echo "⚠ $MCP_SHARED_DEST already exists and is not a symlink — leaving it alone."
-    echo "  claude-rig tracks its own copy at $MCP_SHARED_SRC; merge by hand if you want it."
+    echo "  agent-rig tracks its own copy at $MCP_SHARED_SRC; merge by hand if you want it."
   else
     mkdir -p "$(dirname "$MCP_SHARED_DEST")"
     [[ -L "$MCP_SHARED_DEST" ]] && rm "$MCP_SHARED_DEST"
@@ -461,7 +471,7 @@ if [[ -d "$shared_skill" ]]; then
   dest_subdir="$AGENT_SKILLS_DEST/simplify"
   if [[ -L "$dest_subdir" ]] && [[ "$(readlink "$dest_subdir")" == "$shared_skill" ]]; then
     :
-  elif [[ -L "$dest_subdir" ]] && [[ "$(readlink "$dest_subdir")" == "$SKILLS_SRC/"* ]]; then
+  elif [[ -L "$dest_subdir" ]] && [[ "$(readlink "$dest_subdir")" == "$SKILLS_SRC/"* ]] || left_by_rename "$dest_subdir"; then
     rm "$dest_subdir"
     ln -s "$shared_skill" "$dest_subdir"
   elif [[ ! -e "$dest_subdir" ]] && [[ ! -L "$dest_subdir" ]]; then
@@ -475,7 +485,7 @@ if [[ -d "$SKILLS_SRC/simplify" ]]; then
   dest_subdir="$CODEX_SKILLS_DEST/simplify"
   if [[ -L "$dest_subdir" ]] && [[ "$(readlink "$dest_subdir")" == "$SKILLS_SRC/simplify" ]]; then
     :
-  elif [[ -L "$dest_subdir" ]] && [[ "$(readlink "$dest_subdir")" == "$SKILLS_SRC/"* ]]; then
+  elif [[ -L "$dest_subdir" ]] && [[ "$(readlink "$dest_subdir")" == "$SKILLS_SRC/"* ]] || left_by_rename "$dest_subdir"; then
     rm "$dest_subdir"
     ln -s "$SKILLS_SRC/simplify" "$dest_subdir"
   elif [[ ! -e "$dest_subdir" ]] && [[ ! -L "$dest_subdir" ]]; then
@@ -691,7 +701,7 @@ for cmd in claude-slot claude-tabs claude-search agent-search claude-pod claude-
 done
 
 # tab-status lives in tab-status/ (not bin/) but is a user-facing command used
-# by the title hooks. Link it the same way so claude-rig owns
+# by the title hooks. Link it the same way so agent-rig owns
 # ~/.local/bin/tab-status — historically this symlink pointed at a stale copy
 # in the brain repo, so an existing (possibly cross-repo) symlink is replaced.
 ts_src="$REPO_DIR/tab-status/tab-status"

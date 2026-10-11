@@ -18,20 +18,20 @@ bats_require_minimum_version 1.5.0
 HOOK="$BATS_TEST_DIRNAME/lemma-brief.sh"
 
 setup() {
-  export CLAUDE_RIG_LEMMA_QUEUE="$BATS_TEST_TMPDIR/pending.tsv"
+  export AGENT_RIG_LEMMA_QUEUE="$BATS_TEST_TMPDIR/pending.tsv"
   # The loop ships OFF (see "the enable gate" below). On for the suite, so every
   # test here goes on exercising the real hook rather than the gate.
-  export CLAUDE_RIG_LEMMA_ENABLED=1
-  export CLAUDE_RIG_LEMMA_SNAPSHOT="$BATS_TEST_TMPDIR/store.snapshot"
+  export AGENT_RIG_LEMMA_ENABLED=1
+  export AGENT_RIG_LEMMA_SNAPSHOT="$BATS_TEST_TMPDIR/store.snapshot"
   # A real repo: the hook names the repo from `git rev-parse --show-toplevel`,
   # matching how lemma-commit.sh names it. A bare directory would resolve to
   # nothing, which is the correct behaviour but not the case under test here.
-  export CLAUDE_RIG_LEMMA_CWD="$BATS_TEST_TMPDIR/claude-rig"
-  mkdir -p "$CLAUDE_RIG_LEMMA_CWD"
-  git -C "$CLAUDE_RIG_LEMMA_CWD" init -q
+  export AGENT_RIG_LEMMA_CWD="$BATS_TEST_TMPDIR/agent-rig"
+  mkdir -p "$AGENT_RIG_LEMMA_CWD"
+  git -C "$AGENT_RIG_LEMMA_CWD" init -q
 }
 
-queue() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" 100 "$3" >> "$CLAUDE_RIG_LEMMA_QUEUE"; }
+queue() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" 100 "$3" >> "$AGENT_RIG_LEMMA_QUEUE"; }
 
 # --- silence when there is nothing to say --------------------------------
 
@@ -42,7 +42,7 @@ queue() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" 100 "$3" >> "$CLAUDE_RIG_LEMMA_QUE
 }
 
 @test "silent when the queue is empty" {
-  : > "$CLAUDE_RIG_LEMMA_QUEUE"
+  : > "$AGENT_RIG_LEMMA_QUEUE"
 
   run "$HOOK"
   [ "$status" -eq 0 ]
@@ -60,17 +60,17 @@ queue() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" 100 "$3" >> "$CLAUDE_RIG_LEMMA_QUE
 # --- reporting -----------------------------------------------------------
 
 @test "reports the pending count for this repo" {
-  queue claude-rig abc1234 "first"
-  queue claude-rig def5678 "second"
+  queue agent-rig abc1234 "first"
+  queue agent-rig def5678 "second"
 
   run "$HOOK"
   [ "$status" -eq 0 ]
   [[ "$output" == *"2 commits"* ]] || false
-  [[ "$output" == *"claude-rig"* ]]
+  [[ "$output" == *"agent-rig"* ]]
 }
 
 @test "counts only this repo, not the whole queue" {
-  queue claude-rig abc1234 "mine"
+  queue agent-rig abc1234 "mine"
   queue questor   def5678 "theirs"
   queue questor   aaa1111 "theirs too"
 
@@ -80,29 +80,29 @@ queue() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" 100 "$3" >> "$CLAUDE_RIG_LEMMA_QUE
 }
 
 @test "names the drain command so the queue is actionable" {
-  queue claude-rig abc1234 "first"
+  queue agent-rig abc1234 "first"
 
   run "$HOOK"
   [[ "$output" == *"lemma-drain"* ]]
 }
 
 @test "reports how many facts the store already holds for this repo" {
-  queue claude-rig abc1234 "first"
-  cat > "$CLAUDE_RIG_LEMMA_SNAPSHOT" <<'EOF'
+  queue agent-rig abc1234 "first"
+  cat > "$AGENT_RIG_LEMMA_SNAPSHOT" <<'EOF'
 LEMMALOG-SNAPSHOT-V1
 NOW	100
-FACT	edge	1	ep1	s:claude-rig s:ruled_out s:per-repo-stores
-FACT	edge	1	ep1	s:claude-rig s:uses s:datalog
+FACT	edge	1	ep1	s:agent-rig s:ruled_out s:per-repo-stores
+FACT	edge	1	ep1	s:agent-rig s:uses s:datalog
 FACT	edge	1	ep2	s:questor s:uses s:ruby
 EOF
 
   run "$HOOK"
-  [[ "$output" == *"Facts on record for claude-rig: 2."* ]]
+  [[ "$output" == *"Facts on record for agent-rig: 2."* ]]
 }
 
 @test "omits the facts line when the store has nothing for this repo" {
-  queue claude-rig abc1234 "first"
-  cat > "$CLAUDE_RIG_LEMMA_SNAPSHOT" <<'EOF'
+  queue agent-rig abc1234 "first"
+  cat > "$AGENT_RIG_LEMMA_SNAPSHOT" <<'EOF'
 LEMMALOG-SNAPSHOT-V1
 FACT	edge	1	ep2	s:questor s:uses s:ruby
 EOF
@@ -118,7 +118,7 @@ EOF
 # --- never break session startup ----------------------------------------
 
 @test "exits 0 with no snapshot file at all" {
-  queue claude-rig abc1234 "first"
+  queue agent-rig abc1234 "first"
 
   run "$HOOK"
   [ "$status" -eq 0 ]
@@ -126,22 +126,22 @@ EOF
 }
 
 @test "a malformed snapshot never breaks startup" {
-  queue claude-rig abc1234 "first"
-  printf 'this is not a snapshot\n\n\t\t\n' > "$CLAUDE_RIG_LEMMA_SNAPSHOT"
+  queue agent-rig abc1234 "first"
+  printf 'this is not a snapshot\n\n\t\t\n' > "$AGENT_RIG_LEMMA_SNAPSHOT"
 
   run "$HOOK"
   [ "$status" -eq 0 ]
 }
 
 @test "a malformed queue never breaks startup" {
-  printf 'garbage with no tabs\n' > "$CLAUDE_RIG_LEMMA_QUEUE"
+  printf 'garbage with no tabs\n' > "$AGENT_RIG_LEMMA_QUEUE"
 
   run "$HOOK"
   [ "$status" -eq 0 ]
 }
 
 @test "exits 0 when the cwd is not a git repository" {
-  export CLAUDE_RIG_LEMMA_CWD="$BATS_TEST_TMPDIR/nowhere"
+  export AGENT_RIG_LEMMA_CWD="$BATS_TEST_TMPDIR/nowhere"
 
   run "$HOOK"
   [ "$status" -eq 0 ]
@@ -158,40 +158,40 @@ EOF
 b_edge() { # subj rel obj [valid_to]
   local vt="${4:-9223372036854775807}"
   printf 'FACT\tedge\t0.9\tep1\ts:%s s:%s s:%s i:100 i:%s i:100\n' "$1" "$2" "$3" "$vt" \
-    >> "$CLAUDE_RIG_LEMMA_SNAPSHOT"
+    >> "$AGENT_RIG_LEMMA_SNAPSHOT"
 }
-b_new_store() { printf 'LEMMALOG1\nNOW\t100\nRULES\t\n' > "$CLAUDE_RIG_LEMMA_SNAPSHOT"; }
+b_new_store() { printf 'LEMMALOG1\nNOW\t100\nRULES\t\n' > "$AGENT_RIG_LEMMA_SNAPSHOT"; }
 
 @test "counts topic facts tied to the repo by in_repo, not just literal names" {
-  queue claude-rig abc1234 "first"
+  queue agent-rig abc1234 "first"
   b_new_store
-  b_edge heredocs in_repo claude-rig
+  b_edge heredocs in_repo agent-rig
   b_edge heredocs because cascading-tool-denials
 
   run "$HOOK"
-  [[ "$output" == *"Facts on record for claude-rig: 2."* ]]
+  [[ "$output" == *"Facts on record for agent-rig: 2."* ]]
 }
 
 @test "does not count another repo's facts" {
-  queue claude-rig abc1234 "first"
+  queue agent-rig abc1234 "first"
   b_new_store
-  b_edge heredocs in_repo claude-rig
+  b_edge heredocs in_repo agent-rig
   b_edge sharding in_repo questor
   b_edge sharding uses captain
 
   run "$HOOK"
-  [[ "$output" == *"Facts on record for claude-rig: 1."* ]]
+  [[ "$output" == *"Facts on record for agent-rig: 1."* ]]
 }
 
 @test "excludes superseded facts from the count" {
-  queue claude-rig abc1234 "first"
+  queue agent-rig abc1234 "first"
   b_new_store
-  b_edge commit-message-file in_repo claude-rig
+  b_edge commit-message-file in_repo agent-rig
   b_edge commit-message-file location repo-level-tmp 200
   b_edge commit-message-file location dot-claude-tmp
 
   run "$HOOK"
-  [[ "$output" == *"Facts on record for claude-rig: 2."* ]]
+  [[ "$output" == *"Facts on record for agent-rig: 2."* ]]
 }
 
 # --- the enable gate -----------------------------------------------------
@@ -201,9 +201,9 @@ b_new_store() { printf 'LEMMALOG1\nNOW\t100\nRULES\t\n' > "$CLAUDE_RIG_LEMMA_SNA
 # queue nobody is draining is exactly how a hook gets disabled for good.
 
 @test "silent when the enable marker is absent, even with a full queue" {
-  export CLAUDE_RIG_LEMMA_ENABLED=""
-  export CLAUDE_RIG_LEMMA_MARKER="$BATS_TEST_TMPDIR/absent"
-  queue claude-rig abc1234 "first"
+  export AGENT_RIG_LEMMA_ENABLED=""
+  export AGENT_RIG_LEMMA_MARKER="$BATS_TEST_TMPDIR/absent"
+  queue agent-rig abc1234 "first"
 
   run "$HOOK"
   [ "$status" -eq 0 ]
@@ -211,10 +211,10 @@ b_new_store() { printf 'LEMMALOG1\nNOW\t100\nRULES\t\n' > "$CLAUDE_RIG_LEMMA_SNA
 }
 
 @test "speaks when the marker file exists" {
-  export CLAUDE_RIG_LEMMA_ENABLED=""
-  export CLAUDE_RIG_LEMMA_MARKER="$BATS_TEST_TMPDIR/on"
-  : > "$CLAUDE_RIG_LEMMA_MARKER"
-  queue claude-rig abc1234 "first"
+  export AGENT_RIG_LEMMA_ENABLED=""
+  export AGENT_RIG_LEMMA_MARKER="$BATS_TEST_TMPDIR/on"
+  : > "$AGENT_RIG_LEMMA_MARKER"
+  queue agent-rig abc1234 "first"
 
   run "$HOOK"
   [[ "$output" == *"1 commit pending"* ]]

@@ -7,7 +7,7 @@
 #   claude-src --path                        print the extracted bundle, extracting if needed
 #   claude-src --which                       print the binary being read
 #
-# Why this exists: claude-rig keeps needing to know how Claude Code actually
+# Why this exists: agent-rig keeps needing to know how Claude Code actually
 # behaves — where it writes its session registry, how peer addressing resolves,
 # what a roster row is made of. Probing sockets and diffing observed behaviour
 # answers those slowly and leaves you with a theory. The answers are in the
@@ -39,7 +39,7 @@ set -euo pipefail
 # Blocks that are >90% printable are kept. 64KiB is small enough to cut cleanly
 # between the bytecode and text regions, large enough to scan 265MB quickly.
 CLAUDE_SRC_BLOCK_BYTES="${CLAUDE_SRC_BLOCK_BYTES:-65536}"
-CLAUDE_SRC_CACHE_DIR="${CLAUDE_SRC_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/claude-rig/cli-src}"
+CLAUDE_SRC_CACHE_DIR="${CLAUDE_SRC_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/agent-rig/cli-src}"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Functions (sourced by tests)

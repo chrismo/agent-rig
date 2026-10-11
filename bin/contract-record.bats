@@ -20,7 +20,7 @@ bats_require_minimum_version 1.5.0
 REC="$BATS_TEST_DIRNAME/contract-record"
 
 setup() {
-  export CLAUDE_RIG_CONTRACT_RESULTS="$BATS_TEST_TMPDIR/results.tsv"
+  export AGENT_RIG_CONTRACT_RESULTS="$BATS_TEST_TMPDIR/results.tsv"
 }
 
 # --- the happy path ------------------------------------------------------
@@ -29,14 +29,14 @@ setup() {
   run "$REC" "A1: the uds-messaging subsystem still exists" pass 2.1.251
   [ "$status" -eq 0 ]
 
-  run cat "$CLAUDE_RIG_CONTRACT_RESULTS"
+  run cat "$AGENT_RIG_CONTRACT_RESULTS"
   [[ "$output" == "A1"$'\t'"pass"$'\t'"2.1.251"$'\t'* ]]
 }
 
 @test "records a skip as skip, not as a pass" {
   "$REC" "R2: live sessions on the installed build get inboxes" skip 2.1.251
 
-  run cat "$CLAUDE_RIG_CONTRACT_RESULTS"
+  run cat "$AGENT_RIG_CONTRACT_RESULTS"
   [[ "$output" == "R2"$'\t'"skip"* ]] || false
   [[ "$output" != *"pass"* ]]
 }
@@ -44,14 +44,14 @@ setup() {
 @test "records a failure" {
   "$REC" "B3: records carry pid, sessionId, cwd" fail 2.1.251
 
-  run cat "$CLAUDE_RIG_CONTRACT_RESULTS"
+  run cat "$AGENT_RIG_CONTRACT_RESULTS"
   [[ "$output" == "B3"$'\t'"fail"* ]]
 }
 
 @test "stamps each row with an epoch timestamp" {
   "$REC" "A1: whatever" pass 2.1.251
 
-  run cut -f4 "$CLAUDE_RIG_CONTRACT_RESULTS"
+  run cut -f4 "$AGENT_RIG_CONTRACT_RESULTS"
   [[ "$output" =~ ^[0-9]{10}$ ]]
 }
 
@@ -59,16 +59,16 @@ setup() {
   "$REC" "A1: whatever" pass 2.1.226
   "$REC" "A1: whatever" fail 2.1.251
 
-  run wc -l < "$CLAUDE_RIG_CONTRACT_RESULTS"
+  run wc -l < "$AGENT_RIG_CONTRACT_RESULTS"
   [ "${output// /}" -eq 2 ]
 }
 
 @test "creates the results file and its directory when absent" {
-  export CLAUDE_RIG_CONTRACT_RESULTS="$BATS_TEST_TMPDIR/nested/deeper/results.tsv"
+  export AGENT_RIG_CONTRACT_RESULTS="$BATS_TEST_TMPDIR/nested/deeper/results.tsv"
 
   run "$REC" "A1: whatever" pass 2.1.251
   [ "$status" -eq 0 ]
-  [ -f "$CLAUDE_RIG_CONTRACT_RESULTS" ]
+  [ -f "$AGENT_RIG_CONTRACT_RESULTS" ]
 }
 
 # --- ID extraction -------------------------------------------------------
@@ -76,26 +76,26 @@ setup() {
 @test "takes the ID from the description prefix, before the colon" {
   "$REC" "C12: transcript lines are JSON objects" pass 2.1.251
 
-  run cut -f1 "$CLAUDE_RIG_CONTRACT_RESULTS"
+  run cut -f1 "$AGENT_RIG_CONTRACT_RESULTS"
   [ "$output" = "C12" ]
 }
 
 @test "drops a description with no assumption ID" {
   run "$REC" "assert_anchor reports a miss loudly" pass 2.1.251
   [ "$status" -eq 0 ]
-  [ ! -s "$CLAUDE_RIG_CONTRACT_RESULTS" ]
+  [ ! -s "$AGENT_RIG_CONTRACT_RESULTS" ]
 }
 
 @test "drops a lowercase prefix — assumption IDs are uppercase" {
   run "$REC" "a1: not a real assumption" pass 2.1.251
   [ "$status" -eq 0 ]
-  [ ! -s "$CLAUDE_RIG_CONTRACT_RESULTS" ]
+  [ ! -s "$AGENT_RIG_CONTRACT_RESULTS" ]
 }
 
 @test "drops a prefix with no digits" {
   run "$REC" "NOTE: this is prose, not an assumption" pass 2.1.251
   [ "$status" -eq 0 ]
-  [ ! -s "$CLAUDE_RIG_CONTRACT_RESULTS" ]
+  [ ! -s "$AGENT_RIG_CONTRACT_RESULTS" ]
 }
 
 # --- never break the caller ----------------------------------------------
@@ -103,25 +103,25 @@ setup() {
 @test "exits 0 and writes nothing on an unknown status" {
   run "$REC" "A1: whatever" exploded 2.1.251
   [ "$status" -eq 0 ]
-  [ ! -s "$CLAUDE_RIG_CONTRACT_RESULTS" ]
+  [ ! -s "$AGENT_RIG_CONTRACT_RESULTS" ]
 }
 
 @test "exits 0 and writes nothing when called with no arguments" {
   run "$REC"
   [ "$status" -eq 0 ]
-  [ ! -s "$CLAUDE_RIG_CONTRACT_RESULTS" ]
+  [ ! -s "$AGENT_RIG_CONTRACT_RESULTS" ]
 }
 
 @test "exits 0 when the version is unresolvable, recording it as unknown" {
   run "$REC" "A1: whatever" pass ""
   [ "$status" -eq 0 ]
 
-  run cut -f3 "$CLAUDE_RIG_CONTRACT_RESULTS"
+  run cut -f3 "$AGENT_RIG_CONTRACT_RESULTS"
   [ "$output" = "unknown" ]
 }
 
 @test "exits 0 when the results path is unwritable" {
-  export CLAUDE_RIG_CONTRACT_RESULTS="/dev/null/impossible/results.tsv"
+  export AGENT_RIG_CONTRACT_RESULTS="/dev/null/impossible/results.tsv"
 
   run "$REC" "A1: whatever" pass 2.1.251
   [ "$status" -eq 0 ]

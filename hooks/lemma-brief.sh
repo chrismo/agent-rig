@@ -23,14 +23,14 @@
 
 set -uo pipefail
 
-QUEUE="${CLAUDE_RIG_LEMMA_QUEUE:-$HOME/.claude/lemmalog/pending.tsv}"
-MARKER="${CLAUDE_RIG_LEMMA_MARKER:-$HOME/.claude/lemmalog/enabled}"
+QUEUE="${AGENT_RIG_LEMMA_QUEUE:-$HOME/.claude/lemmalog/pending.tsv}"
+MARKER="${AGENT_RIG_LEMMA_MARKER:-$HOME/.claude/lemmalog/enabled}"
 
 # One global store, keyed by repo — see skills/lemma-drain/SKILL.md. Must match
 # the default in bin/lemma-install, which is what tells the MCP server where to
 # write; a disagreement fails silently, with the store filling up correctly
 # while this brief reports it empty forever. bin/lemma-install.bats pins them.
-SNAPSHOT="${CLAUDE_RIG_LEMMA_SNAPSHOT:-$HOME/.claude/lemmalog/store.snapshot}"
+SNAPSHOT="${AGENT_RIG_LEMMA_SNAPSHOT:-$HOME/.claude/lemmalog/store.snapshot}"
 
 # The loop ships OFF; opting in is `touch ~/.claude/lemmalog/enabled`. See the
 # long note in hooks/lemma-commit.sh for why this is a gate and not an early
@@ -41,7 +41,7 @@ SNAPSHOT="${CLAUDE_RIG_LEMMA_SNAPSHOT:-$HOME/.claude/lemmalog/store.snapshot}"
 # machine that never opted in, a SessionStart nag about a queue nobody is
 # draining is exactly how a hook gets disabled for good.
 lemma_enabled() {
-  case "${CLAUDE_RIG_LEMMA_ENABLED:-}" in
+  case "${AGENT_RIG_LEMMA_ENABLED:-}" in
     1) return 0 ;;
     0) return 1 ;;
   esac
@@ -51,9 +51,9 @@ lemma_enabled() {
 # Which repo is this session in? SessionStart delivers a JSON payload on stdin
 # carrying `cwd`, but reading it is best-effort: if stdin is closed or the
 # payload is not what we expect, the session's working directory is a perfectly
-# good answer. CLAUDE_RIG_LEMMA_CWD is the test seam.
+# good answer. AGENT_RIG_LEMMA_CWD is the test seam.
 resolve_repo() {
-  local cwd="${CLAUDE_RIG_LEMMA_CWD:-}"
+  local cwd="${AGENT_RIG_LEMMA_CWD:-}"
 
   if [[ -z "$cwd" && ! -t 0 ]]; then
     local input

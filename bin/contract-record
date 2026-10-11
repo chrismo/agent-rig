@@ -36,7 +36,7 @@
 set -uo pipefail
 
 REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-RESULTS="${CLAUDE_RIG_CONTRACT_RESULTS:-$REPO_DIR/docs/contract-results.tsv}"
+RESULTS="${AGENT_RIG_CONTRACT_RESULTS:-$REPO_DIR/docs/contract-results.tsv}"
 
 main() {
   # Under-application is not an error: a teardown firing in a context we

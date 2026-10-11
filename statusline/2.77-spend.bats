@@ -24,15 +24,15 @@
 PLUGIN="$BATS_TEST_DIRNAME/plugins.d/2.77-spend"
 
 setup() {
-  export CLAUDE_RIG_SPEND_STATUSLINE="$BATS_TEST_TMPDIR/upstream.sh"
+  export AGENT_RIG_SPEND_STATUSLINE="$BATS_TEST_TMPDIR/upstream.sh"
 }
 
 # upstream <body> — stand in for the marketplace script. A stub, not the real
 # thing: this suite asserts the shim's plumbing, and a stub is the only way to
 # drive the failure modes (nonzero exit, empty output) on demand.
 upstream() {
-  printf '#!/bin/bash\n%s\n' "$1" > "$CLAUDE_RIG_SPEND_STATUSLINE"
-  chmod +x "$CLAUDE_RIG_SPEND_STATUSLINE"
+  printf '#!/bin/bash\n%s\n' "$1" > "$AGENT_RIG_SPEND_STATUSLINE"
+  chmod +x "$AGENT_RIG_SPEND_STATUSLINE"
 }
 
 @test "passes upstream's segment through to the status line" {
@@ -97,7 +97,7 @@ upstream() {
 # The checkout is not on every machine this repo deploys to, so a missing
 # upstream is an ordinary state, not an error.
 @test "a missing upstream script is silent" {
-  export CLAUDE_RIG_SPEND_STATUSLINE="$BATS_TEST_TMPDIR/not-here.sh"
+  export AGENT_RIG_SPEND_STATUSLINE="$BATS_TEST_TMPDIR/not-here.sh"
   run "$PLUGIN"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
@@ -105,7 +105,7 @@ upstream() {
 
 @test "a non-executable upstream script is silent" {
   upstream 'echo "36% \$121/\$333"'
-  chmod -x "$CLAUDE_RIG_SPEND_STATUSLINE"
+  chmod -x "$AGENT_RIG_SPEND_STATUSLINE"
   run "$PLUGIN"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
@@ -121,7 +121,7 @@ upstream() {
 @test "a hanging upstream is cut off rather than wedging the prompt" {
   command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1 \
     || skip "no timeout(1) on this machine"
-  export CLAUDE_RIG_SPEND_TIMEOUT=1
+  export AGENT_RIG_SPEND_TIMEOUT=1
   upstream 'sleep 30; echo "too late"'
   run "$PLUGIN"
   [ "$status" -eq 0 ]
