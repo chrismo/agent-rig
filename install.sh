@@ -705,6 +705,15 @@ if [[ -f "$ts_src" ]]; then
   ln -s "$ts_src" "$ts_dest"
   echo "✓ Linked tab-status -> $LOCAL_BIN/"
 fi
+
+# Prune links to commands since deleted from the repo. Dangling and pointing
+# into this repo only: everything else in ~/.local/bin belongs to other tools.
+for dest in "$LOCAL_BIN"/*; do
+  if [[ -L "$dest" ]] && [[ ! -e "$dest" ]] && { [[ "$(readlink "$dest")" == "$REPO_DIR/"* ]] || left_by_rename "$dest"; }; then
+    rm "$dest"
+    echo "✓ Pruned dangling $(basename "$dest") -> $LOCAL_BIN/"
+  fi
+done
 echo ""
 
 # shell/rig.zsh holds the shell-side halves of `wt` and `new_wt`. Those can't

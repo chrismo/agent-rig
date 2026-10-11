@@ -777,6 +777,38 @@ OLD_CHECKOUT() { echo "$TEST_DIR/old/claude-rig"; }
   [[ "$target" == "$BATS_TEST_DIRNAME/tab-status/tab-status" ]]
 }
 
+@test "bin: dangling link for a command deleted from the repo is pruned" {
+  mkdir -p "$LOCAL_BIN"
+  ln -s "$BATS_TEST_DIRNAME/bin/deleted-command.sh" "$LOCAL_BIN/deleted-command"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ ! -L "$LOCAL_BIN/deleted-command" ]
+}
+
+@test "bin: dangling link into the old claude-rig checkout is pruned" {
+  mkdir -p "$LOCAL_BIN"
+  ln -s "$(OLD_CHECKOUT)/skills/permission-mode.sh" "$LOCAL_BIN/permission-mode"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ ! -L "$LOCAL_BIN/permission-mode" ]
+}
+
+@test "bin: a dangling link into another repo is left alone" {
+  mkdir -p "$LOCAL_BIN"
+  ln -s "/some/other/repo/bin/theirs" "$LOCAL_BIN/theirs"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ -L "$LOCAL_BIN/theirs" ]
+}
+
+@test "bin: a live link into the repo that is not on the allowlist is left alone" {
+  mkdir -p "$LOCAL_BIN"
+  ln -s "$BATS_TEST_DIRNAME/bin/harvest.sh" "$LOCAL_BIN/harvest"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ -L "$LOCAL_BIN/harvest" ]
+}
+
 # ── shell/rig.zsh entrypoint ────────────────────────────────────────────────
 # shell/rig.zsh holds the cd-wrappers for wt-new and wt (a subprocess cannot cd
 # its caller's shell, so those halves have to live in a sourced file). It only
