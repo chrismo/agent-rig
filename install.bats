@@ -886,25 +886,33 @@ EOF
   [[ "$denys" == *"Bash(rm -rf:*)"* ]]
 }
 
-# ── cc-audit rules ───────────────────────────────────────────────────────────
+# ── cc-audit rules (retired) ─────────────────────────────────────────────────
 
-@test "cc-audit-rules: not installed when no json files" {
+@test "cc-audit: rules link from an earlier install is removed" {
+  export CC_AUDIT_DIR="$TEST_DIR/.cc-audit"
+  mkdir -p "$CC_AUDIT_DIR"
+  ln -s "$BATS_TEST_DIRNAME/cc-audit-rules" "$CC_AUDIT_DIR/rules"
   run_installer
   [ "$status" -eq 0 ]
-  [ ! -e "${CC_AUDIT_DIR:-$TEST_DIR/.cc-audit}/rules" ]
+  [ ! -L "$CC_AUDIT_DIR/rules" ]
 }
 
-@test "cc-audit-rules: symlinked when json files present" {
+@test "cc-audit: rules link into the old claude-rig checkout is removed" {
   export CC_AUDIT_DIR="$TEST_DIR/.cc-audit"
-  mkdir -p "$BATS_TEST_DIRNAME/cc-audit-rules"
-  echo '{"safe":[]}' > "$BATS_TEST_DIRNAME/cc-audit-rules/test-rule.json"
+  mkdir -p "$CC_AUDIT_DIR"
+  ln -s "$(OLD_CHECKOUT)/cc-audit-rules" "$CC_AUDIT_DIR/rules"
   run_installer
-  rm -f "$BATS_TEST_DIRNAME/cc-audit-rules/test-rule.json"
   [ "$status" -eq 0 ]
-  [ -L "$CC_AUDIT_DIR/rules" ]
-  local target
-  target=$(readlink "$CC_AUDIT_DIR/rules")
-  [[ "$target" == "$BATS_TEST_DIRNAME/cc-audit-rules" ]]
+  [ ! -L "$CC_AUDIT_DIR/rules" ]
+}
+
+@test "cc-audit: a rules directory that is not our link is left alone" {
+  export CC_AUDIT_DIR="$TEST_DIR/.cc-audit"
+  mkdir -p "$CC_AUDIT_DIR/rules"
+  echo '{"safe":[]}' > "$CC_AUDIT_DIR/rules/mine.json"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ -f "$CC_AUDIT_DIR/rules/mine.json" ]
 }
 
 # ── Sandbox allowWrite merge ──────────────────────────────────────────────────

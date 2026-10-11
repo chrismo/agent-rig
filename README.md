@@ -281,7 +281,6 @@ The installer:
 7. Symlinks skills into `~/.claude/skills/`
 8. Symlinks agents into `~/.claude/agents/`
 9. Symlinks rules into `~/.claude/rules/`
-10. Symlinks `cc-audit-rules/` into `~/.cc-audit/rules` when any `*.json` rules are present
 
 For tab-status to update your Ghostty tab titles, source `tab-status/set-title.sh` from your `.zshrc` and ensure `tab-status` is on your PATH (the installer links it to `~/.local/bin/`).
 

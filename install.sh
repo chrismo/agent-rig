@@ -666,20 +666,12 @@ if [[ -d "$RULES_SRC" ]]; then
   fi
 fi
 
-# Install cc-audit personalized rules
-if [[ -d "$CC_AUDIT_RULES_SRC" ]]; then
-  json_count=$(find "$CC_AUDIT_RULES_SRC" -maxdepth 1 -name "*.json" | wc -l | tr -d ' ')
-  if [[ "$json_count" -gt 0 ]]; then
-    mkdir -p "$(dirname "$CC_AUDIT_RULES_DEST")"
-
-    if [[ -L "$CC_AUDIT_RULES_DEST" ]] || [[ -d "$CC_AUDIT_RULES_DEST" ]]; then
-      rm -rf "$CC_AUDIT_RULES_DEST"
-    fi
-
-    ln -s "$CC_AUDIT_RULES_SRC" "$CC_AUDIT_RULES_DEST"
-    echo "✓ Installed cc-audit rules -> $CC_AUDIT_RULES_DEST ($json_count rule files)"
-    echo ""
-  fi
+# cc-audit is retired. Remove the rules link earlier installs made; anything
+# else at that path is not ours. Delete this block once every machine has run it.
+if [[ -L "$CC_AUDIT_RULES_DEST" ]] && { [[ "$(readlink "$CC_AUDIT_RULES_DEST")" == "$REPO_DIR/cc-audit-rules" ]] || left_by_rename "$CC_AUDIT_RULES_DEST"; }; then
+  rm "$CC_AUDIT_RULES_DEST"
+  echo "✓ Removed retired cc-audit rules link $CC_AUDIT_RULES_DEST"
+  echo ""
 fi
 
 # Install bin/* helper commands as symlinks in ~/.local/bin/
