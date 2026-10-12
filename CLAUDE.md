@@ -33,6 +33,13 @@ It needs two things the bats suites do not: `pi` on `PATH` (the test resolves
 `@earendil-works/pi-tui` out of the installed pi bundle, or `$PI_BIN` if set),
 and a node new enough to import `.ts` directly.
 
+**New bash scripts use `#!/usr/bin/env bash5`.** `install.sh` links
+`~/.local/bin/bash5` to the first bash 5+ it finds (Homebrew's on macOS; SIP
+rules out `/usr/bin`). No link → the script fails with `env: bash5: No such
+file or directory` instead of running under 3.2. Anything run outside a login
+shell (launchd) must put `~/.local/bin` on `PATH`. Test these by *running* them,
+not sourcing, so the shebang picks the bash.
+
 **`bin/ticket-sort` needs bash 4.1+**, and its suite *sources* the script instead of
 running it, so the bash running the suite is the one that has to be new enough.
 `bats` is `#!/usr/bin/env bash` — that means whichever bash comes first on `PATH`,

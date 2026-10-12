@@ -706,6 +706,25 @@ if [[ -f "$ts_src" ]]; then
   echo "✓ Linked tab-status -> $LOCAL_BIN/"
 fi
 
+# Interpreter for `#!/usr/bin/env bash5` scripts (SIP rules out /usr/bin).
+# Homebrew's bin/ path, not the versioned Cellar one, survives upgrades.
+BASH5_CANDIDATES="${AGENT_RIG_BASH5_CANDIDATES:-/opt/homebrew/bin/bash /usr/local/bin/bash /bin/bash /usr/bin/bash}"
+bash5_src=""
+for candidate in $BASH5_CANDIDATES; do
+  # shellcheck disable=SC2016
+  if [[ -x "$candidate" ]] && (( $("$candidate" -c 'echo ${BASH_VERSINFO[0]}' 2>/dev/null || echo 0) >= 5 )); then
+    bash5_src="$candidate"
+    break
+  fi
+done
+if [[ -n "$bash5_src" ]]; then
+  ln -sfn "$bash5_src" "$LOCAL_BIN/bash5"
+  echo "✓ Linked bash5 -> $bash5_src"
+else
+  echo "⚠ no bash 5 found (tried: $BASH5_CANDIDATES) — bash5 scripts will not run."
+  echo "  On macOS: brew install bash"
+fi
+
 # Prune links to commands since deleted from the repo. Dangling and pointing
 # into this repo only: everything else in ~/.local/bin belongs to other tools.
 for dest in "$LOCAL_BIN"/*; do

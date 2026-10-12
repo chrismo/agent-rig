@@ -809,6 +809,58 @@ OLD_CHECKOUT() { echo "$TEST_DIR/old/claude-rig"; }
   [ -L "$LOCAL_BIN/harvest" ]
 }
 
+# ── bash5: the interpreter for `#!/usr/bin/env bash5` scripts ───────────────
+
+# A stand-in bash that reports major version $1 to the installer's probe.
+fake_bash() {
+  mkdir -p "$TEST_DIR/fake"
+  printf '#!/bin/sh\necho %s\n' "$2" > "$TEST_DIR/fake/$1"
+  chmod +x "$TEST_DIR/fake/$1"
+  echo "$TEST_DIR/fake/$1"
+}
+
+@test "bash5: linked to the first candidate that is bash 5+" {
+  local old new newer
+  old=$(fake_bash old 3)
+  new=$(fake_bash new 5)
+  newer=$(fake_bash newer 6)
+  export AGENT_RIG_BASH5_CANDIDATES="$TEST_DIR/fake/missing $old $new $newer"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ -L "$LOCAL_BIN/bash5" ]
+  [[ "$(readlink "$LOCAL_BIN/bash5")" == "$new" ]]
+}
+
+@test "bash5: no bash 5 found warns, links nothing, and the install still succeeds" {
+  local old
+  old=$(fake_bash old 3)
+  export AGENT_RIG_BASH5_CANDIDATES="$old"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ ! -e "$LOCAL_BIN/bash5" ]
+  [[ "$output" == *"no bash 5"* ]]
+}
+
+@test "bash5: an existing link is repointed on re-install" {
+  local new
+  new=$(fake_bash new 5)
+  mkdir -p "$LOCAL_BIN"
+  ln -s "/old/homebrew/bin/bash" "$LOCAL_BIN/bash5"
+  export AGENT_RIG_BASH5_CANDIDATES="$new"
+  run_installer
+  [ "$status" -eq 0 ]
+  [[ "$(readlink "$LOCAL_BIN/bash5")" == "$new" ]]
+}
+
+@test "bash5: default candidates find a real bash 5 that runs" {
+  # No override: whatever this machine has. Skips where there is no bash 5.
+  run_installer
+  [ "$status" -eq 0 ]
+  [ -L "$LOCAL_BIN/bash5" ] || skip "no bash 5 on this machine"
+  run "$LOCAL_BIN/bash5" -c 'echo ${BASH_VERSINFO[0]}'
+  [ "$output" -ge 5 ]
+}
+
 # ── shell/rig.zsh entrypoint ────────────────────────────────────────────────
 # shell/rig.zsh holds the cd-wrappers for wt-new and wt (a subprocess cannot cd
 # its caller's shell, so those halves have to live in a sourced file). It only
