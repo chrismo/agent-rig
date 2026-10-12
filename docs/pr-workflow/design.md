@@ -510,6 +510,12 @@ wanted:
   clean" with the same shape: Claude `--resume U --fork-session --session-id
   F`, pi `--fork U --session-id F`.
 
+## Known issues
+
+- **`pr-state`: a clone of your own fork may not find the PR (untested).** If
+  a repo is cloned from your own fork, gh may query the fork instead of the
+  upstream project, so the PR wouldn't be found.
+
 ## Open
 
 - **Scope:** this grew from "keep my PR current" into a small software factory.
