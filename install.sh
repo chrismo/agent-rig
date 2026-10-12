@@ -707,8 +707,9 @@ if [[ -f "$ts_src" ]]; then
 fi
 
 # Interpreter for `#!/usr/bin/env bash5` scripts (SIP rules out /usr/bin).
-# Homebrew's bin/ path, not the versioned Cellar one, survives upgrades.
-BASH5_CANDIDATES="${AGENT_RIG_BASH5_CANDIDATES:-/opt/homebrew/bin/bash /usr/local/bin/bash /bin/bash /usr/bin/bash}"
+# Homebrew's bin/ and opt/ paths, not the versioned Cellar one, survive upgrades;
+# bin/bash is absent when the formula is installed but unlinked.
+BASH5_CANDIDATES="${AGENT_RIG_BASH5_CANDIDATES:-/opt/homebrew/bin/bash /opt/homebrew/opt/bash/bin/bash /usr/local/bin/bash /usr/local/opt/bash/bin/bash /bin/bash /usr/bin/bash}"
 bash5_src=""
 for candidate in $BASH5_CANDIDATES; do
   # shellcheck disable=SC2016
