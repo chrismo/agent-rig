@@ -158,6 +158,33 @@ make_transcript() {
   [[ "$output" == *"🟣 pr"* ]]
 }
 
+@test "pr-watch glyph is appended for the branch it was computed for" {
+  init_repo feat
+  printf 'feat\t✅\n' > "$STATUS_DIR/repo.pr"
+  run compute_title </dev/null
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "repo (feat) ✅" ]
+}
+
+@test "pr-watch glyph for a different branch is not shown" {
+  init_repo feat
+  printf 'other\t❌\n' > "$STATUS_DIR/repo.pr"
+  run compute_title </dev/null
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "repo (feat)" ]
+}
+
+@test "pr-watch glyph sits after the label, status emoji stays in front" {
+  init_repo feat
+  echo active > "$STATUS_DIR/repo"
+  printf 'feat\t⏳\n' > "$STATUS_DIR/repo.pr"
+  run compute_title </dev/null
+
+  [ "$output" = "🟢 repo (feat) ⏳" ]
+}
+
 @test "transcript_path is read from the hook JSON on stdin" {
   init_repo main
   make_transcript find-difficult-words-script

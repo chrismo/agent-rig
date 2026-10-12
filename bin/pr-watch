@@ -1,0 +1,212 @@
+#!/usr/bin/env bash5
+#
+# pr-watch - observe-only pass over every enrolled branch.
+#
+# Usage: pr-watch [status | install | uninstall]
+#
+#   (none)     for each repo in global git config pr-tend.repo: fetch, then
+#              pr-state every branch with branch.<name>.pr-tend=true. Writes a
+#              glyph for the branch's worktree (shown by tab-status), notifies
+#              on reasons chrismo is needed that are new since the last pass,
+#              and records the pass.
+#   status     print the last pass
+#   install    launchd job: a pass every pr-tend.interval seconds (default 300)
+#   uninstall  remove the job
+#
+# Glyphs: ❌ needs chrismo   ⚠️ state unknown   🔧 work for later   ⏳ CI running
+#         ✅ ready to merge  🏁 merged          🚫 closed
+# Notified: CI red, restack conflict, human threads, foreign push, merged,
+# ready to merge.
+#
+# Env:    PR_TEND_STATE_DIR (~/.local/state/pr-tend), STATUS_DIR (~/.claude/tab-status)
+#         PR_WATCH_TIMEOUT (120): seconds a fetch or pr-state may take
+# Config: pr-tend.notify — shell command, run with <title> <message> appended
+#         (default: a macOS notification)
+
+set -euo pipefail
+
+STATE_DIR=${PR_TEND_STATE_DIR:-$HOME/.local/state/pr-tend}
+STATUS_DIR=${STATUS_DIR:-$HOME/.claude/tab-status}
+LABEL=com.agent-rig.pr-watch
+LAUNCH_AGENTS=${PR_WATCH_LAUNCH_AGENTS:-$HOME/Library/LaunchAgents}
+TIMEOUT=${PR_WATCH_TIMEOUT:-120}
+
+read -r -d '' CLASSIFY <<'EOF' || true
+[ (if .ci.verdict == "red" then {key: "ci-red", msg: "CI red: \(.ci.failing | join(", "))"} else empty end),
+  (if .sync.conflict == true then {key: "conflict", msg: "restack onto \(.sync.target) would conflict"} else empty end),
+  (if (.threads.owed_human // 0) > 0 then {key: "human-threads", msg: "\(.threads.owed_human) human thread(s) owed a reply"} else empty end),
+  (if .push.remote_ours == false and (.push.behind // 0) > 0 then {key: "foreign-push", msg: "remote has commits that aren't ours"} else empty end)
+] as $red
+| if .pr.state == "MERGED" then {glyph: "🏁", reasons: [{key: "merged", msg: "merged"}]}
+  elif .pr.state == "CLOSED" then {glyph: "🚫", reasons: []}
+  elif $red != [] then {glyph: "❌", reasons: $red}
+  elif .errors != [] or .fresh != true then {glyph: "⚠️", reasons: []}
+  elif .pr == null or (.pr.draft // false) or .sync.up_to_date == false
+       or (.threads.owed_bot // 0) > 0 or (.push.ahead // 0) > 0 or .ci.verdict == "inconclusive"
+       or any(.review[]; .status | IN("uncovered", "rewritten-changed", "unknown"))
+    then {glyph: "🔧", reasons: []}
+  elif .ci.verdict == "pending" or .ci.for_head == false then {glyph: "⏳", reasons: []}
+  else {glyph: "✅", reasons: [{key: "ready", msg: "ready to merge"}]}
+  end
+EOF
+
+# Notifier stdout would land in the pass record (check runs inside $(...)).
+notify() {
+  local cmd; cmd=$(git config --global --get pr-tend.notify || true)
+  if [[ -n $cmd ]]; then
+    sh -c "$cmd"' "$@"' _ "$1" "$2" </dev/null >&2 || echo "pr-watch: notify failed: $cmd" >&2
+  else
+    osascript -e 'on run argv' -e 'display notification (item 2 of argv) with title (item 1 of argv)' \
+      -e 'end run' "$1" "$2" </dev/null >/dev/null || echo "pr-watch: notify failed: osascript" >&2
+  fi
+}
+
+# Kills the whole process group: children would otherwise hold our output pipe open.
+with_timeout() {
+  perl -e '
+    my $t = shift;
+    my $pid = fork // die "fork: $!\n";
+    if (!$pid) { setpgrp(0, 0); exec @ARGV or die "exec $ARGV[0]: $!\n" }
+    $SIG{ALRM} = sub { kill "TERM", -$pid; print STDERR "timed out after ${t}s\n"; exit 124 };
+    alarm $t;
+    waitpid $pid, 0;
+    exit($? & 127 ? 128 + ($? & 127) : $? >> 8);
+  ' "$TIMEOUT" "$@"
+}
+
+write_glyph() { # write_glyph <worktree-or-empty> <branch> <glyph>
+  [[ -n $1 ]] || return 0
+  local f; f="$STATUS_DIR/$(basename "$1").pr"
+  printf '%s\t%s\n' "$2" "$3" > "$f"
+  echo "$f" >> "$WRITTEN"
+}
+
+# check <repo> <name> <branch> <worktree-or-empty>. Runs inside $(...), where -e
+# is off: every failure is handled explicitly.
+check() {
+  local repo=$1 name=$2 b=$3 wt=$4 json cls glyph state_file prev line errf
+  errf=$(mktemp)
+  if ! json=$(cd "$repo" && with_timeout pr-state --json "$b" 2>"$errf" </dev/null); then
+    write_glyph "$wt" "$b" ⚠️
+    printf '%s\t%s\t⚠️\tpr-state failed: %s\n' "$name" "$b" "$(head -1 "$errf")"
+    rm -f "$errf"
+    return
+  fi
+  rm -f "$errf"
+  if ! cls=$(jq -c "$CLASSIFY" <<<"$json" 2>/dev/null) || [[ -z $cls ]]; then
+    write_glyph "$wt" "$b" ⚠️
+    printf '%s\t%s\t⚠️\tunparseable pr-state output\n' "$name" "$b"
+    return
+  fi
+  glyph=$(jq -r .glyph <<<"$cls")
+
+  state_file="$STATE_DIR/branches/$(basename "$repo")-$(printf '%s' "$repo" | shasum | cut -c1-8)/$b.json"
+  mkdir -p "$(dirname "$state_file")"
+  # An unreadable previous state re-notifies rather than silently dropping reasons.
+  prev=$(jq -c '[.reasons[].key]' "$state_file" 2>/dev/null) || prev='[]'
+  [[ -n $prev ]] || prev='[]'
+  while IFS= read -r line; do
+    [[ -n $line ]] && notify "$name $b" "$line"
+  done < <(jq -r --argjson prev "$prev" '.reasons[] | select(.key | IN($prev[]) | not) | .msg' <<<"$cls")
+  jq -n --argjson s "$json" --argjson c "$cls" '$c + {state: $s}' > "$state_file.tmp" \
+    && mv "$state_file.tmp" "$state_file"
+
+  write_glyph "$wt" "$b" "$glyph"
+  printf '%s\t%s\t%s\t%s\n' "$name" "$b" "$glyph" "$(jq -r '[.reasons[].msg] | join("; ")' <<<"$cls")"
+}
+
+run_pass() {
+  mkdir -p "$STATE_DIR" "$STATUS_DIR"
+  WRITTEN=$(mktemp)
+  trap 'rm -f "$WRITTEN"' EXIT
+  local -a repos branches
+  local repo name remote b lines="" key val wt_path fetch_err
+  mapfile -t repos < <(git config --global --get-all pr-tend.repo || true)
+
+  for repo in "${repos[@]}"; do
+    [[ -d $repo ]] || continue
+    name=$(basename "$repo")
+    mapfile -t branches < <(git -C "$repo" config --get-regexp '^branch\..*\.pr-tend$' 2>/dev/null \
+      | awk '$2 == "true" { sub(/^branch\./, "", $1); sub(/\.pr-tend$/, "", $1); print $1 }')
+    (( ${#branches[@]} )) || continue
+
+    remote=$(git -C "$repo" config --get pr-tend.remote || echo origin)
+    if ! fetch_err=$(with_timeout git -C "$repo" fetch --prune --quiet "$remote" 2>&1 </dev/null); then
+      lines+="$name"$'\t-\t⚠️\t'"fetch from $remote failed: ${fetch_err%%$'\n'*}"$'\n'
+    fi
+
+    local -A worktree_of=()
+    while read -r key val; do
+      case $key in
+        worktree) wt_path=$val ;;
+        branch) worktree_of[${val#refs/heads/}]=$wt_path ;;
+      esac
+    done < <(git -C "$repo" worktree list --porcelain)
+
+    for b in "${branches[@]}"; do
+      lines+=$(check "$repo" "$name" "$b" "${worktree_of[$b]:-}")$'\n'
+    done
+    unset worktree_of
+  done
+
+  local f
+  for f in "$STATUS_DIR"/*.pr; do
+    [[ -e $f ]] || continue
+    grep -qxF "$f" "$WRITTEN" || rm -f "$f"
+  done
+  { date '+last pass: %Y-%m-%d %H:%M:%S'; printf '%s' "$lines"; } > "$STATE_DIR/last-pass"
+}
+
+plist_path() { echo "$LAUNCH_AGENTS/$LABEL.plist"; }
+
+xml() { local v=${1//&/\&amp;}; v=${v//</\&lt;}; printf '%s' "${v//>/\&gt;}"; }
+
+install_job() {
+  local plist prog interval tmp
+  plist=$(plist_path)
+  prog="$HOME/.local/bin/pr-watch"
+  [[ -x $prog ]] || prog=$(realpath "$0")
+  interval=$(git config --global --get pr-tend.interval || echo 300)
+  [[ $interval =~ ^[1-9][0-9]*$ ]] || { echo "pr-watch: pr-tend.interval must be whole seconds: $interval" >&2; exit 1; }
+  mkdir -p "$LAUNCH_AGENTS" "$STATE_DIR"
+  tmp=$(mktemp)
+  cat > "$tmp" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$LABEL</string>
+  <key>ProgramArguments</key><array><string>$(xml "$prog")</string></array>
+  <key>StartInterval</key><integer>$interval</integer>
+  <key>RunAtLoad</key><true/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>$(xml "$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin")</string>
+  </dict>
+  <key>StandardOutPath</key><string>$(xml "$STATE_DIR/launchd.log")</string>
+  <key>StandardErrorPath</key><string>$(xml "$STATE_DIR/launchd.log")</string>
+</dict>
+</plist>
+EOF
+  plutil -lint -s "$tmp" || { rm -f "$tmp"; echo "pr-watch: generated plist is invalid" >&2; exit 1; }
+  mv "$tmp" "$plist"
+  launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+  launchctl bootstrap "gui/$(id -u)" "$plist"
+  echo "installed $plist (every ${interval}s)"
+}
+
+uninstall_job() {
+  launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+  rm -f "$(plist_path)"
+  echo "uninstalled $LABEL"
+}
+
+case ${1:-} in
+  "") run_pass ;;
+  status)
+    if [[ -f $STATE_DIR/last-pass ]]; then sed "s/$(printf '\t')/  /g" "$STATE_DIR/last-pass"; else echo "no pass yet"; fi ;;
+  install) install_job ;;
+  uninstall) uninstall_job ;;
+  -h|--help) sed -n '3,/^$/s/^# \{0,1\}//p' "$0" ;;
+  *) echo "pr-watch: unknown command: $1" >&2; exit 1 ;;
+esac

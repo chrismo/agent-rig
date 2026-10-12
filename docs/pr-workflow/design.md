@@ -38,7 +38,7 @@ a glance where each one stands:
 | Scope | One branch at a time. A pass never reaches into another worktree. |
 | Initiator | The pipeline: `pr-act start "<task>"` (chrismo) to begin; tickets later |
 | Agent invocation | Headless, one step per process, persistent session per branch (`-p` + resume) |
-| Done signal | The agent process exiting (or chrismo exiting a takeover) |
+| Done signal | The agent process exiting (or chrismo exiting a takeover). [req-review #5](req-review.md#5-done--process-exit-cant-tell-finished-from-asking) |
 | Takeover | `pr-act attach` → lock + interactive resume of the same session |
 | Rebase policy | `rebase --onto` + `push --force-with-lease=<branch>:<expected-sha>`; plain push when nothing was rewritten |
 | Stacks | First-class. Lineage stored locally; restack is always `rebase --onto`. |
@@ -171,7 +171,7 @@ implementation fits the same loop.
 |---|---|---|
 | `git push`, no PR yet | remote = local HEAD | ship's push is a no-op; `gh pr create` proceeds |
 | `git push`, PR exists | remote has commits the local review hasn't covered | nothing breaks: "ready" and the bot trigger both require the `local` pin to cover HEAD. Cost: one early CI run |
-| force-push after an amend | remote ≠ expected SHA; our lease would fail | **remote SHA in this branch's reflog?** yes → ours; push with lease = that SHA. No → someone else pushed → escalate |
+| force-push after an amend | remote ≠ expected SHA; our lease would fail | **remote SHA in this branch's reflog?** yes → ours; push with lease = that SHA. No → someone else pushed → escalate. [req-review #9](req-review.md#9-someone-elses-fast-forward-is-treated-as-a-foreign-push) |
 | `gh pr create` | PR already exists | ship becomes "find and fix up": `gh pr edit` description **and base** (an agent in a stack will likely target `main`, not its parent). Base edit skipped for a native-stack PR (O1). |
 | pushed to the wrong branch (`HEAD:main`) | — | not ours to absorb; that's server-side branch protection |
 
@@ -312,6 +312,7 @@ after  = git diff <new-base>     HEAD       | git patch-id --stable
 ```
 
 Equal → write new `base` pin, done. Not equal → reset to old HEAD, escalate.
+[req-review #1](req-review.md#1-a-resolved-restack-conflict-always-escalates)
 
 **Observed (subagent probe, git 2.53, 2026-10-11):** default patch-id includes
 context lines, so an upstream edit inside our diff context (line 8 vs our line
@@ -334,7 +335,7 @@ pin (whichever the label requires):
 |---|---|---|
 | pin = HEAD | — | covered |
 | pin is ancestor of HEAD | `rev-list --count pin..HEAD` | N commits uncovered → J5 |
-| rewritten by rebase | `-U0` patch-id of base..pin vs base..HEAD | equal → covered; else `range-diff` → J5 |
+| rewritten by rebase | `-U0` patch-id of base..pin vs base..HEAD | equal → covered; else `range-diff` → J5. [req-review #2](req-review.md#2-restacking-breaks-o6s-rewritten-by-rebase-check) |
 
 Timestamps only answer "has the bot replied since the trigger" — never
 staleness, because rebase rewrites committer dates.
@@ -418,10 +419,31 @@ Every few minutes, for each enrolled branch:
 1. `pr-state` (zero tokens)
 2. compute the next transition of the state machine
 3. mechanical transitions → run them (A1–A7, A10, A11); A8 runs only after an
-   agent step exits or a takeover ends, never on an idle pass
+   agent step exits or a takeover ends, never on an idle pass.
+   [req-review #3](req-review.md#3-lock--in-flight-gates-only-agent-steps-not-mechanical-ones)
 4. agent transitions → run the resume step, **unless locked** (taken over) or a
    step is already in flight for this branch
 5. needs-chrismo → N2
+
+**Built so far — observe-only (`bin/pr-watch`, 2026-10-11).** Steps 2–4 are
+not built; a pass only observes and reports:
+
+- Enrollment: `pr-act enroll [<branch>]` sets `branch.<name>.pr-tend` and adds
+  the main worktree to global `pr-tend.repo` (multi-valued), the watcher's list
+  of repos.
+- **Fetch first** (decided): one `git fetch --prune` per repo, then `pr-state`
+  per enrolled branch. `pr-state` stays read-only, with no `--fetch` option.
+- Glyph per worktree in `~/.claude/tab-status/<worktree>.pr` as
+  `<branch>\t<glyph>`; `tab-status` appends it to the title only while the
+  worktree is still on that branch. ❌ needs chrismo · ⚠️ unknown · 🔧 work for
+  later (behind, unpushed, bot threads, review not covered, no PR) · ⏳ CI
+  running · ✅ ready · 🏁 merged · 🚫 closed.
+- Notifications (N2, macOS by default, `pr-tend.notify` overrides) only for a
+  reason that wasn't there last pass (N3): CI red, restack conflict, human
+  threads, foreign push, merged, ready to merge.
+- `pr-watch status` prints the last pass. `pr-watch install` / `uninstall`
+  manage the launchd job, opt-in per machine; interval `pr-tend.interval`,
+  default 300 s.
 
 Rejected alternatives: `/loop` per session (tokens per idle wake, dies with the
 session); built-in PR subscriptions (Claude-only, untested); git hooks (blind to
@@ -515,6 +537,13 @@ wanted:
 - **`pr-state`: a clone of your own fork may not find the PR (untested).** If
   a repo is cloned from your own fork, gh may query the fork instead of the
   upstream project, so the PR wouldn't be found.
+- **Glyph only shows when the title is redrawn.** The watcher writes the glyph
+  file; the tab title picks it up the next time `tab-status` runs (a Claude hook).
+  A tab with no Claude session never redraws, and the shell-prompt title
+  (`set-title.sh`, deployed from the brain repo) doesn't read the glyph at all.
+- **Same-named worktrees in two repos share a glyph file.** Glyph files are
+  keyed by worktree basename, like `tab-status`'s own files. The branch check
+  hides a mismatch unless both enrolled branches also share a name.
 
 ## Open
 
@@ -524,7 +553,7 @@ wanted:
   `ticket-sort`?
 - First-remote-review rule for unlabeled PRs (proposed above; unconfirmed)
 - Home bot command (TBD; config default handles it)
-- Watcher interval
+- Watcher interval (default 300 s; revisit after use)
 - N2 channel beyond the tab glyph (PushNotification? `say`?)
 - Agent-reply marking, if/when agents reply on human threads (deferred)
 - **Fork per step** — spike done, both harnesses fork identically; now just a decision

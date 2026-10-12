@@ -1,0 +1,40 @@
+#!/usr/bin/env bash5
+#
+# pr-act - mechanical PR-pipeline verbs.
+#
+# Usage: pr-act <verb> [<branch>]
+#
+#   enroll     mark <branch> (default: current) for the watcher and register
+#              this repo in global git config pr-tend.repo
+#   unenroll   clear the mark
+#
+# See docs/pr-workflow/design.md, "Act".
+
+set -euo pipefail
+
+die() { echo "pr-act: $*" >&2; exit 1; }
+help() { sed -n '3,/^$/s/^# \{0,1\}//p' "$0"; }
+usage() { help >&2; exit 1; }
+
+(( $# )) || usage
+verb=$1; shift
+if [[ $verb == -h || $verb == --help ]]; then help; exit 0; fi
+
+git rev-parse --git-dir >/dev/null 2>&1 || die "not a git repository"
+branch=${1:-$(git branch --show-current)}
+[[ -n $branch ]] || die "detached HEAD; name a branch"
+
+case $verb in
+  enroll)
+    git rev-parse -q --verify "refs/heads/$branch" >/dev/null || die "no such branch: $branch"
+    git config "branch.$branch.pr-tend" true
+    main_worktree=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
+    if ! grep -qxF "$main_worktree" <<<"$(git config --global --get-all pr-tend.repo || true)"; then
+      git config --global --add pr-tend.repo "$main_worktree"
+    fi
+    ;;
+  unenroll)
+    git config --unset "branch.$branch.pr-tend" || (( $? == 5 ))  # 5: wasn't set
+    ;;
+  *) die "unknown verb: $verb" ;;
+esac
