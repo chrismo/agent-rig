@@ -498,12 +498,17 @@ wanted:
     still mint fork IDs up front, nothing to discover
   - parent U is **unmutated** by forks (resuming U afterwards recalls only the
     pre-fork turns)
-  **pi half not run:** pi's only ready provider (anthropic) depends on an
-  `ANTHROPIC_API_KEY` with no credit, and pi may not use the Max login (see
-  Auth and billing). Needs a pi provider first. `pi --fork <id> --session-id <F>` is the
-  analogous call to test; `spikes/fork-pi.sh <empty-dir>` runs it. Note the
-  script hard-codes `anthropic/claude-haiku-4-5` — change `--model` to match
-  whichever provider pi gets.
+  **pi half observed (pi 0.99.1, cloudflare-ai-gateway
+  `workers-ai/@cf/zai-org/glm-5.3-flash`, 2026-10-11)** — script
+  `spikes/fork-pi.sh` (provider/model via `PI_SPIKE_PROVIDER` /
+  `PI_SPIKE_MODEL`). Same four results as Claude:
+  - plain `--session U` keeps ID U
+  - `--fork U` → new ID (pi's is a UUIDv7) with full context
+  - `--fork U --session-id F` → **ID is F**
+  - parent U unmutated by forks
+  Both harnesses therefore support "mint fork ID up front, parent stays
+  clean" with the same shape: Claude `--resume U --fork-session --session-id
+  F`, pi `--fork U --session-id F`.
 
 ## Open
 
@@ -516,9 +521,7 @@ wanted:
 - Watcher interval
 - N2 channel beyond the tab glyph (PushNotification? `say`?)
 - Agent-reply marking, if/when agents reply on human threads (deferred)
-- **Fork per step** — decide after the pi half of the spike runs
-- Action items (not design): remove or keep the dead `ANTHROPIC_API_KEY`
-  export in `~/.zshrc`; give pi a usable provider
+- **Fork per step** — spike done, both harnesses fork identically; now just a decision
 
 ## Prior art — summary
 
