@@ -616,6 +616,13 @@ short-lived, so it can't own children like their daemons do. Plan:
 - **Same-named worktrees in two repos share a glyph file.** Glyph files are
   keyed by worktree basename, like `tab-status`'s own files. The branch check
   hides a mismatch unless both enrolled branches also share a name.
+- **No command to unregister a repo (low priority).** `pr-act enroll` adds the
+  main worktree to global `pr-tend.repo`, but `pr-act unenroll` only clears the
+  branch mark, and `pr-watch uninstall` removes the whole launchd job. Nothing
+  removes one repo from the list, so a repo you no longer want watched stays
+  registered until `git config --global --unset pr-tend.repo <path>`. A
+  registered repo with no enrolled branches, or a missing directory, is skipped,
+  so the cost is clutter, not wrong behavior.
 
 ## Open
 
