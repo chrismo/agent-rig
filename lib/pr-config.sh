@@ -9,7 +9,8 @@
 
 PRC_DEFAULTS='{"harness": "claude",
   "settings": {"remote": "origin", "stepTimeout": 1800, "interval": 300, "replyPrefix": "🤖 ",
-               "verify": "", "notify": "", "botLogin": []}}'
+               "verify": "", "notify": "",
+               "botLogin": [], "botIgnore": [], "botIgnoreBody": []}}'
 PRC_SKELETON='{"harness": "claude", "harnesses": {"claude": {}, "pi": {}}, "steps": {}, "settings": {}}'
 
 prc_err() { echo "pr-config: $*" >&2; return 1; }

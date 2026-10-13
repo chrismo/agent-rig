@@ -84,8 +84,8 @@ query($ids: [ID!]!) {
     __typename
     ... on PullRequestReviewThread { id path line isOutdated
       comments(first: 50) { nodes { author { __typename login } body } } }
-    ... on PullRequestReview { id author { __typename login } body }
-    ... on IssueComment { id author { __typename login } body }
+    ... on PullRequestReview { id url author { __typename login } body }
+    ... on IssueComment { id url author { __typename login } body }
   }
 }
 EOF
@@ -180,7 +180,7 @@ address() {
     .data.viewer.login as $me
     | [.data.nodes[] | select(. != null)
        | {id, type: {PullRequestReviewThread: "thread", PullRequestReview: "review", IssueComment: "comment"}[.__typename],
-          path, line, outdated: .isOutdated,
+          url, path, line, outdated: .isOutdated,
           conversation: [(.comments.nodes[]? // .) | {author: .author.login, bot: (.author.__typename == "Bot"), body}]}
        | .untrusted = ([.conversation[] | select((.bot or .author == $me or (.author | unbot | IN($bots[] | unbot))) | not)
                         | .author] | unique)
@@ -271,10 +271,11 @@ address() {
   done < <(jq -c '.[] | select(.type == "thread" and .action != "ask")' <<<"$plan")
 
   # Review bodies and PR comments can't be replied to or resolved: answer them
-  # in one PR comment and remember them in branch.<b>.pr-handled.
+  # in one PR comment and remember them in branch.<b>.pr-handled. Link, don't
+  # quote: quoted text can carry what other bots act on (/commands, @mentions).
   body=$(jq -r --arg p "$prefix" '[.[] | select(.type != "thread" and .action != "ask")]
     | if length == 0 then empty else
-        "\($p)Addressed review feedback:\n\n" + (map("> \(.conversation[0].body | split("\n") | map(select(test("\\S") and (startswith("<!--") | not)))[0] // "")\n\n\(.reply)") | join("\n\n"))
+        "\($p)Addressed review feedback:\n\n" + (map("[\(if .type == "review" then "Review" else "Comment" end)](\(.url))\n\n\(.reply)") | join("\n\n"))
       end' <<<"$plan")
   if [[ -n $body ]]; then
     # By URL, not {owner}/{repo}: gh's default repo may be a fork.

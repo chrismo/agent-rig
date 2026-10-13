@@ -117,8 +117,8 @@ nodes_fixture() {
    "comments":{"nodes":[{"author":{"__typename":"Bot","login":"review-bot"},"body":"`three` should be `THREE`."}]}},
   {"__typename":"PullRequestReviewThread","id":"T2","path":"file.txt","line":1,"isOutdated":false,
    "comments":{"nodes":[{"author":{"__typename":"Bot","login":"review-bot"},"body":"Rename `one`?"}]}},
-  {"__typename":"PullRequestReview","id":"R1","author":{"__typename":"Bot","login":"review-bot"},"body":"<!-- bot-marker -->\n\nSummary: add a trailing line."},
-  {"__typename":"IssueComment","id":"C1","author":{"__typename":"Bot","login":"review-bot"},"body":"Consider a changelog."}
+  {"__typename":"PullRequestReview","id":"R1","url":"https://example/pr/7#pullrequestreview-1","author":{"__typename":"Bot","login":"review-bot"},"body":"<!-- bot-marker -->\n\nSummary: add a trailing line."},
+  {"__typename":"IssueComment","id":"C1","url":"https://example/pr/7#issuecomment-1","author":{"__typename":"Bot","login":"review-bot"},"body":"Consider a changelog."}
 ]}}
 EOF
 }
@@ -364,9 +364,25 @@ remote_feat() { git -C "$TMP/origin.git" rev-parse feat; }
   gh_call resource | grep -q 'url=https://example/pr/7' || false
   gh_call addComment | grep -q 'subject=PR_node' || false
   gh_call addComment | grep -q 'Added the line.' || false
-  gh_call addComment | grep -q '> Summary: add a trailing line.' || false
+  gh_call addComment | grep -qF '(https://example/pr/7#pullrequestreview-1)' || false
   ! gh_call addComment | grep -q 'Changelog' || false
   [ "$(git config --get-all branch.feat.pr-handled)" = R1 ]
+}
+
+@test "the PR comment links to what it answers instead of quoting it" {
+  # Quoted text can carry what other bots act on: a /command in an image URL
+  # re-triggered a review bot.
+  state_fixture '.threads.owed_bot = 1 | .threads.items = [
+    {id: "C1", type: "comment", kind: "bot", path: null, line: null, outdated: null, last: "review-bot"}]'
+  jq '(.data.nodes[] | select(.id == "C1") | .body) = "<img src=\"https://x/merge-simpson.png\"> /marge is on the job"' \
+    "$FX/nodes.json" > "$FX/n" && mv "$FX/n" "$FX/nodes.json"
+  agent_result '{outcome: "done", commit_message: null, summary: "",
+                 items: [{id: "C1", action: "reply", reply: "Nothing to do."}]}'
+  run "$PR_ACT" address
+  [ "$status" -eq 0 ]
+  gh_call addComment | grep -qF '(https://example/pr/7#issuecomment-1)' || false
+  gh_call addComment | grep -q 'Nothing to do.' || false
+  ! gh_call addComment | grep -q 'marge' || false
 }
 
 @test "a bot thread someone else has joined goes to chrismo, not the agent" {

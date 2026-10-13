@@ -14,6 +14,7 @@ setup() {
   TMP="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
   export GIT_CONFIG_GLOBAL="$TMP/gitconfig-global"
   export GIT_CONFIG_SYSTEM=/dev/null
+  export PR_TEND_CONFIG="$TMP/global.json"
   printf '[user]\n\temail = t@example.com\n\tname = Tester\n[init]\n\tdefaultBranch = main\n' > "$GIT_CONFIG_GLOBAL"
 
   export GH_FIXTURES="$TMP/gh"
@@ -601,6 +602,47 @@ note() { # note <id> <type> <login> [body] — a review or top-level comment nod
   state
   [ "$(field .threads.owed_bot)" = 2 ]
   [ "$(field '[.threads.items[].last] | join(",")')" = "copilot,copilot" ]
+}
+
+@test "threads: botLogin and botIgnore come from the config file too" {
+  git switch -qc feat && commit a.txt a
+  echo '{"settings": {"botLogin": ["marge"], "botIgnore": ["vercel"]}}' > "$PR_TEND_CONFIG"
+  pr_fixture feat ".reviews.nodes = [$(note R1 User marge), $(note R2 Bot vercel)]"
+  state
+  [ "$(field '[.threads.items[].id] | join(",")')" = R1 ]
+}
+
+@test "threads: bot reviews and comments whose body matches botIgnoreBody are never owed" {
+  git switch -qc feat && commit a.txt a
+  echo '{"settings": {"botIgnoreBody": ["is on the job\\.", "^Deployed"]}}' > "$PR_TEND_CONFIG"
+  pr_fixture feat ".reviews.nodes = [$(note R1 Bot marge 'Marge is on the job. Wait.'), $(note R2 Bot marge 'Real finding')]" \
+    ".comments.nodes = [$(note C1 Bot github-actions 'Deployed to preview'), $(note C2 Bot github-actions 'Not Deployed')]"
+  state
+  [ "$(field '[.threads.items[].id] | join(",")')" = R2,C2 ]
+}
+
+@test "threads: an invalid botIgnoreBody regex fails loudly" {
+  git switch -qc feat && commit a.txt a
+  echo '{"settings": {"botIgnoreBody": ["("]}}' > "$PR_TEND_CONFIG"
+  pr_fixture feat ".comments.nodes = [$(note C1 Bot copilot)]"
+  run "$PR_STATE" --json
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"botIgnoreBody"* ]]
+}
+
+@test "config: remote comes from the config file" {
+  git remote rename origin upstream
+  echo '{"settings": {"remote": "upstream"}}' > "$PR_TEND_CONFIG"
+  git switch -qc feat && commit a.txt a && git push -q upstream feat 2>/dev/null
+  state
+  [ "$(field .push.remote_sha)" = "$(git rev-parse feat)" ]
+}
+
+@test "config: an unreadable config file fails" {
+  echo 'not json' > "$PR_TEND_CONFIG"
+  run "$PR_STATE" --json
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"pr-config"* ]]
 }
 
 @test "summary: review and comment items count in the bot total" {

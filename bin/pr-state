@@ -22,14 +22,17 @@
 # fetch. One gh GraphQL call, two for a non-default parent. A gh failure is
 # recorded in .errors and the git facts are still reported.
 #
-# Config: pr-tend.remote (default origin), pr-tend.botLogin (multi-valued: bots
-# that post as users, counted as bots; a [bot] suffix is optional),
-# pr-tend.botIgnore (multi-valued: bots whose posts are never owed, e.g.
-# github-actions preview links),
-# branch.<name>.pr-{parent,tend,harness,session,lock}, branch.<name>.pr-handled
+# Config: read with lib/pr-config.sh (branch and global files, git config
+# pr-tend.<key>, then built-in defaults): remote (origin), botLogin (bots that
+# post as users, counted as bots; a [bot] suffix is optional), botIgnore (bots
+# whose posts are never owed, e.g. github-actions preview links), botIgnoreBody
+# (regexes: bot reviews and PR comments whose body matches are never owed).
+# State: branch.<name>.pr-{parent,tend,harness,session,lock}, branch.<name>.pr-handled
 # (multi-valued: node ids of bot reviews/comments already dealt with).
 
 set -euo pipefail
+
+source "$(dirname "$(realpath "$0")")/../lib/pr-config.sh"
 
 read -r -d '' QUERY <<'EOF' || true
 query($owner: String!, $repo: String!, $branch: String!) {
@@ -75,7 +78,7 @@ git rev-parse --git-dir >/dev/null 2>&1 || die "not a git repository"
 [[ -n $branch ]] || branch=$(git branch --show-current)
 [[ -n $branch ]] || die "detached HEAD; name a branch"
 head=$(git rev-parse -q --verify "refs/heads/$branch^{commit}") || die "no such branch: $branch"
-remote=$(git config --get pr-tend.remote || echo origin)
+remote=$(prc_setting remote "$branch" false) || die "pr-config failed"
 
 errors=()
 cfg() { git config --get "branch.$branch.$1" || true; }
@@ -86,6 +89,12 @@ count() { git rev-list --count "$@"; }
 patch_id() { git diff -U0 "$1" "$2" | git patch-id --stable | cut -d' ' -f1; }
 jnull() { if [[ -n $1 ]]; then jq -n --arg v "$1" '$v'; else echo null; fi; }
 jlist() { { git config --get-all "$1" || true; } | jq -R . | jq -sc .; }
+slist() { local out; out=$(prc_setting "$1" "$branch" false) || return; jq -Rsc 'split("\n") | map(select(. != ""))' <<<"$out"; }
+bots=$(slist botLogin) || die "pr-config failed"
+ignore=$(slist botIgnore) || die "pr-config failed"
+ignore_body=$(slist botIgnoreBody) || die "pr-config failed"
+jq -n --argjson r "$ignore_body" '$r[] as $re | "" | test($re)' >/dev/null 2>&1 \
+  || die "botIgnoreBody has an invalid regex: $ignore_body"
 
 # -f, not -F, for the branch: -F would send "1234" or "true" as a non-string.
 RESP=""
@@ -258,8 +267,8 @@ state=$(jq -n \
   --argjson r_local "${review[local]}" --argjson r_bot "${review[bot]}" \
   --argjson r_accepted "${review[accepted]}" \
   --argjson gh_ok "$gh_ok" --argjson parent_ok "$parent_ok" \
-  --arg viewer "$viewer" --argjson bots "$(jlist pr-tend.botLogin)" \
-  --argjson ignore "$(jlist pr-tend.botIgnore)" \
+  --arg viewer "$viewer" --argjson bots "$bots" \
+  --argjson ignore "$ignore" --argjson ignore_body "$ignore_body" \
   --argjson handled "$(jlist "branch.$branch.pr-handled")" \
   --arg enrolled "$(cfg pr-tend)" --arg harness "$(cfg pr-harness)" \
   --arg session "$(cfg pr-session)" --arg lock "$(cfg pr-lock)" \
@@ -285,7 +294,7 @@ state=$(jq -n \
          kind: (if .first.nodes[0].author // {} | is_bot then "bot" else "human" end),
          last: .last.nodes[0].author.login}]
      + [($pr.reviews.nodes // [] | .[] | {n: ., type: "review"}), ($pr.comments.nodes // [] | .[] | {n: ., type: "comment"})
-        | select((.n.author // {} | is_bot and (ignored | not)) and (.n.body // "" | test("\\S")) and (.n.id | IN($handled[]) | not))
+        | select((.n.author // {} | is_bot and (ignored | not)) and (.n.body // "" | test("\\S") and (. as $b | any($ignore_body[]; . as $re | $b | test($re)) | not)) and (.n.id | IN($handled[]) | not))
         | {id: .n.id, type, path: null, line: null, outdated: null, kind: "bot", last: .n.author.login}]) as $owed
   | [$owed[] | select(.kind == "bot")] as $ob
   | {

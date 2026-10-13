@@ -20,8 +20,8 @@
 #
 # Lookup: branch file, then global file, then git config pr-tend.<key>, then
 # the built-in default (remote origin, stepTimeout 1800, interval 300,
-# replyPrefix "🤖 "; verify, notify and botLogin empty). null in a file skips to
-# the default. <branch> defaults to the current one; --no-branch skips the
+# replyPrefix "🤖 "; verify, notify, botLogin, botIgnore and botIgnoreBody
+# empty). null in a file skips to the default. <branch> defaults to the current one; --no-branch skips the
 # branch file. --harness reads that harness's blocks instead of the configured
 # one. A list setting prints one element per line. Exit 1 is always an error.
 # set/unset write the current branch's file unless --global or --branch; <path>

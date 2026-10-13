@@ -310,13 +310,13 @@ reports it on the repo's line in `pr-watch status` and refuses to `install`.
 **Built-in defaults** are the bottom layer, in one `PRC_DEFAULTS` block in
 `lib/pr-config.sh`: `harness: claude`; settings `remote: origin`,
 `stepTimeout: 1800`, `interval: 300`, `replyPrefix: "🤖 "`, and `verify`,
-`notify`, `botLogin` empty. Lookup is branch file, global file, git config
+`notify`, `botLogin`, `botIgnore`, `botIgnoreBody` empty. Lookup is branch file, global file, git config
 `pr-tend.<key>`, default; a `null` in a file skips to the default. Exit 3 now
 only means a key with no value and no default. A missing file is `{}`, so no
 global file is needed to run.
 
 **One library.** `lib/pr-config.sh` holds the resolver; `bin/pr-config` is a
-thin CLI over it and `pr-act` / `pr-watch` source it (no shell-out). Callers
+thin CLI over it and `pr-act` / `pr-watch` / `pr-state` source it (no shell-out). Callers
 only call `prc_get` / `prc_setting` and can't tell which layer a value came
 from. The functions never exit and check every step (`|| return`), because
 callers run them as `x=$(prc_...) || die`, where errexit is off; the CLI calls
@@ -655,7 +655,10 @@ prompts, exit codes) so the watcher can call them unchanged.
 6. Push, then: threads get a reply (prefix `pr-tend.replyPrefix`, default
    "🤖 "); fixed / reply resolve it, pushback stays open. Review bodies and PR
    comments get one combined PR comment and are added to
-   `branch.<b>.pr-handled`. `ask` items (and any the agent skipped) are
+   `branch.<b>.pr-handled`. The comment links to each item by URL rather than
+   quoting it: on 2026-10-13 a quoted Merge Simpson status comment carried its
+   avatar URL (`…/merge-simpson.png`), whose `/merge-simpson` matched that
+   workflow's `contains(body, ...)` trigger and started a new review. `ask` items (and any the agent skipped) are
    printed under "needs chrismo" and left alone.
 
 **Trust:** a thread is handed over only if every comment in it is from a bot
@@ -666,8 +669,17 @@ commands beyond read-only git (Claude) or none at all (pi); `verify` runs repo
 code on agent edits, unsandboxed — `--no-publish` lets chrismo look first.
 
 Not in v1: local review before the push, cycle cap, bot re-trigger, the
-`accepted` pin, lease / lock. `pr-tend.botIgnore` (multi-valued) keeps bots
-such as `github-actions` from ever being owed.
+`accepted` pin, lease / lock. `botIgnore` (logins) keeps bots such as
+`github-actions` from ever being owed; `botIgnoreBody` (regexes, matched against
+bot review and PR comment bodies in `pr-state`) drops single posts such as a
+review bot's "on the job" status without ignoring the account. Both are applied
+before the agent sees anything, so ignoring is deterministic, not an
+instruction. Inline threads are matched by author only (their bodies aren't
+fetched by `pr-state`).
+
+Residual: the agent's reply *text* is posted as written, so a reply could
+itself carry a `/command` or `@mention`. Not handled; a deterministic scrub
+before posting is the fix if it ever happens.
 
 ## Process supervision — plan for the loop (not built)
 
