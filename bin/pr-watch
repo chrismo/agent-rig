@@ -46,7 +46,8 @@ read -r -d '' CLASSIFY <<'EOF' || true
   elif .pr.state == "CLOSED" then {glyph: "🚫", reasons: []}
   elif $red != [] then {glyph: "❌", reasons: $red}
   elif .errors != [] or .fresh != true then {glyph: "⚠️", reasons: []}
-  elif .pr == null or (.pr.draft // false) or .sync.up_to_date == false
+  elif .pr == null or (.pr.draft // false)
+       or (.sync.up_to_date == false and (.sync.target != .sync.default or .parent.merged == true))
        or (.threads.owed_bot // 0) > 0 or (.push.ahead // 0) > 0 or .ci.verdict == "inconclusive"
        or any(.review[]; .status | IN("uncovered", "rewritten-changed", "unknown"))
     then {glyph: "🔧", reasons: []}

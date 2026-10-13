@@ -60,7 +60,7 @@ ps_fixture() {
   j=$(jq -n --arg b "$b" '{
     branch: $b, pr: {number: 7, state: "OPEN", draft: false},
     parent: {name: "main", merged: false},
-    sync: {target: "main", behind: 0, up_to_date: true, conflict: false},
+    sync: {target: "main", default: "main", behind: 0, up_to_date: true, conflict: false},
     push: {remote_sha: "abc", ahead: 0, behind: 0, diverged: false, remote_ours: true},
     fresh: true, stale: [],
     ci: {verdict: "green", failing: [], pending: [], for_head: true},
@@ -165,7 +165,8 @@ notified() { cat "$PS_FIXTURES/notified" 2>/dev/null || true; }
 
 @test "glyph: work an agent will do later is 🔧" {
   local a
-  for a in '.sync.up_to_date = false | .sync.behind = 2' '.threads.owed_bot = 1' \
+  for a in '.sync.up_to_date = false | .sync.behind = 2 | .sync.target = "base"' \
+           '.sync.up_to_date = false | .parent.merged = true' '.threads.owed_bot = 1' \
            '.push.ahead = 1' '.pr = null' '.review.local.status = "uncovered"'; do
     ps_fixture feat "$a"
     pass
@@ -192,6 +193,12 @@ notified() { cat "$PS_FIXTURES/notified" 2>/dev/null || true; }
   ps_fixture feat '.pr.state = "CLOSED"'
   pass
   [ "$(glyph repo)" = "🚫" ]
+}
+
+@test "glyph: only behind the default branch is still ✅" {
+  ps_fixture feat '.sync.up_to_date = false | .sync.behind = 40'
+  pass
+  [ "$(glyph repo)" = "✅" ]
 }
 
 @test "glyph: ❌ outranks 🔧" {

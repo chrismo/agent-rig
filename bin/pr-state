@@ -19,9 +19,13 @@
 #   fresh     false when GitHub's PR / parent-PR head differs from the local
 #             remote-tracking ref, i.e. sync and push answers need a fetch
 #   stored    what pr-tend keeps for the branch: handled ids, refs/pr-tend/<b>/*
+#   next      what to do, in order: {key, who, say, cmd} (lib/pr-next.sh)
 #
-# Output: one line by default; --long adds a line per owed item (mark, type,
-# author, excerpt, url); --json is everything.
+# Output:
+#   default   the one-liner, then NEXT: the first step and how many follow
+#   --long    the one-liner, every step, then a line per owed item
+#             (mark, type, author, excerpt, url)
+#   --json    everything
 #
 # Read-only: never fetches or writes. Remote refs are as fresh as the last
 # fetch. One gh GraphQL call, two for a non-default parent. A gh failure is
@@ -38,6 +42,7 @@
 set -euo pipefail
 
 source "$(dirname "$(realpath "$0")")/../lib/pr-config.sh"
+source "$(dirname "$(realpath "$0")")/../lib/pr-next.sh"
 
 read -r -d '' QUERY <<'EOF' || true
 query($owner: String!, $repo: String!, $branch: String!) {
@@ -265,7 +270,7 @@ state=$(jq -n \
   --arg branch "$branch" --arg head "$head" --argjson pr "$pr" \
   --arg parent "$parent" --arg parent_source "$parent_source" \
   --argjson parent_pr "$parent_pr" --argjson parent_merged "$parent_merged" \
-  --arg target "$target" --argjson behind "$behind" --argjson up_to_date "$up_to_date" \
+  --arg target "$target" --arg default_branch "$default_branch" --argjson behind "$behind" --argjson up_to_date "$up_to_date" \
   --argjson old_base "$(jnull "$old_base")" --argjson conflict "$conflict" \
   --argjson remote_sha "$(jnull "$remote_sha")" --argjson ahead "$ahead" \
   --argjson push_behind "$push_behind" --argjson diverged "$diverged" --argjson remote_ours "$remote_ours" \
@@ -324,7 +329,7 @@ state=$(jq -n \
       parent: {name: $parent, source: $parent_source, merged: $parent_merged,
                pr: (if $parent_pr == null then null else
                       {number: $parent_pr.number, state: $parent_pr.state, head_sha: $parent_pr.headRefOid} end)},
-      sync: {target: $target, behind: $behind, up_to_date: $up_to_date, old_base: $old_base, conflict: $conflict},
+      sync: {target: $target, default: $default_branch, behind: $behind, up_to_date: $up_to_date, old_base: $old_base, conflict: $conflict},
       push: {remote_sha: $remote_sha, ahead: $ahead, behind: $push_behind, diverged: $diverged, remote_ours: $remote_ours},
       fresh: (if $gh_ok and $parent_ok then $stale == [] else null end), stale: $stale,
       ci: {sha: $c.oid, for_head: (if $c == null then null else $c.oid == $head end),
@@ -349,6 +354,8 @@ state=$(jq -n \
       stored: {handled: $handled, refs: $refs},
       errors: $ARGS.positional
     }' "${errors[@]}")
+next=$(printf '%s\n' "$state" | prn_next "$remote") || die "pr-next failed"
+state=$(jq --argjson next "$next" '. + {next: $next}' <<<"$state")
 
 if $json; then
   echo "$state"
@@ -382,6 +389,7 @@ jq -r '
     (if .fresh == false then "⚠ stale: fetch" else empty end),
     (if .errors != [] then "⚠ \(.errors | length) error(s)" else empty end)
   ] | join(" · ")' <<<"$state"
+printf '%s\n' "$next" | prn_lines "$($long && echo all || echo one)"
 
 $long || exit 0
 jq -r '

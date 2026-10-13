@@ -257,6 +257,12 @@ field() { jq -r "$@" <<<"$output"; }
 
 # ── O3 sync vs parent ────────────────────────────────────────────────────────
 
+@test "sync: names the default branch" {
+  git switch -qc feat
+  state
+  [ "$(field .sync.default)" = main ]
+}
+
 @test "sync: up to date with the parent" {
   git switch -qc feat && commit a.txt a
   state
@@ -780,24 +786,27 @@ review() {
 # ── --long: the one-liner, then one line per item ────────────────────────────
 
 @test "--long: one line per item with its mark, type, author, excerpt and url" {
-  git switch -qc feat && commit a.txt a
+  git switch -qc feat && commit a.txt a && git push -q -u origin feat 2>/dev/null
   pr_fixture feat ".reviewThreads.nodes = [$(thread Bot copilot Bot copilot)]" \
     '.reviewThreads.nodes[0].first.nodes[0] += {url: "https://example/pr/7#t1", body: "Rename it"}' \
     ".reviews.nodes = [$(review R1 Bot claude COMMENTED 'Looks fine')]"
   run "$PR_STATE" --long
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 3 ]
+  [ "${#lines[@]}" -eq 4 ]
   [[ "${lines[0]}" == feat*"!:1 i:1"* ]] || false
-  [[ "${lines[1]}" =~ ^\ +!\ +thread\ +copilot\ +file.txt:2\ +Rename\ it\ +https://example/pr/7#t1$ ]] || false
-  [[ "${lines[2]}" =~ ^\ +i\ +review\ +claude\ +Looks\ fine\ +https://example/pr/7#R1$ ]]
+  [ "${lines[1]}" = "NEXT  agent  address 2 bot items  → pr-act address" ]
+  [[ "${lines[2]}" =~ ^\ +!\ +thread\ +copilot\ +file.txt:2\ +Rename\ it\ +https://example/pr/7#t1$ ]] || false
+  [[ "${lines[3]}" =~ ^\ +i\ +review\ +claude\ +Looks\ fine\ +https://example/pr/7#R1$ ]]
 }
 
-@test "--long: nothing owed is just the one-liner" {
+@test "--long: nothing owed is the one-liner and the next steps" {
   git switch -qc feat && commit a.txt a
   pr_fixture feat
   run "$PR_STATE" --long
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 1 ]
+  [ "${#lines[@]}" -eq 3 ]
+  [[ "${lines[1]}" == "NEXT  run    fetch"* ]] || false
+  [[ "${lines[2]}" == "then  run    push"* ]]
 }
 
 @test "--long and --json together is a usage error" {
@@ -829,17 +838,43 @@ review() {
 
 # ── summary line ─────────────────────────────────────────────────────────────
 
-@test "summary: default output is one line naming the key facts" {
-  git switch -qc feat && commit a.txt a
+@test "summary: default output is one line naming the key facts, then NEXT" {
+  git switch -qc feat && commit a.txt a && git push -q -u origin feat 2>/dev/null
   pr_fixture feat "$(checks '[{__typename:"CheckRun",name:"lint",status:"COMPLETED",conclusion:"FAILURE"}]')" \
     ".reviewThreads.nodes = [$(thread User alice User alice)]"
   run "$PR_STATE"
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 1 ]
-  [[ "$output" == feat* ]] || false
-  [[ "$output" == *"#7"* ]] || false
-  [[ "$output" == *"CI red"* ]] || false
-  [[ "$output" == *"!:1 i:0"* ]]
+  [ "${#lines[@]}" -eq 2 ]
+  [[ "${lines[0]}" == feat* ]] || false
+  [[ "${lines[0]}" == *"#7"* ]] || false
+  [[ "${lines[0]}" == *"CI red"* ]] || false
+  [[ "${lines[0]}" == *"!:1 i:0"* ]] || false
+  [[ "${lines[1]}" == "NEXT  you    reply to 1 human item  → pr-state --long  (+"*" more)" ]]
+}
+
+@test "next: --json carries the ordered steps" {
+  git switch -qc feat && commit a.txt a && git push -q -u origin feat 2>/dev/null
+  pr_fixture feat ".reviewThreads.nodes = [$(thread Bot copilot Bot copilot)]"
+  commit b.txt b
+  state
+  [ "$(field '[.next[].key] | join(" ")')" = "bot push" ]  # no ci-wait: CI can't run before the push
+  [ "$(field '.next[1].cmd')" = "git push" ]
+}
+
+@test "next: a pushed branch with an open PR and nothing owed is ready to merge" {
+  git switch -qc feat && commit a.txt a && git push -q -u origin feat 2>/dev/null
+  pr_fixture feat
+  run "$PR_STATE"
+  [ "$status" -eq 0 ]
+  [ "${lines[1]}" = "NEXT  you    ready to merge  → gh pr merge" ]
+}
+
+@test "next: uses the configured remote" {
+  git remote rename origin up
+  git switch -qc feat && commit a.txt a
+  "$PR_CONFIG" set settings.remote up >/dev/null
+  state
+  [ "$(field '[.next[] | select(.key == "push") | .cmd][0]')" = "git push -u up feat" ]
 }
 
 @test "summary: no PR" {

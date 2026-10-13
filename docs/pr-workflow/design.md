@@ -571,7 +571,7 @@ not built; a pass only observes and reports:
 - Glyph per worktree in `~/.claude/tab-status/<worktree>.pr` as
   `<branch>\t<glyph>`; `tab-status` appends it to the title only while the
   worktree is still on that branch. ❌ needs chrismo · ⚠️ unknown · 🔧 work for
-  later (behind, unpushed, bot threads, review not covered, no PR) · ⏳ CI
+  later (behind a stacked parent, unpushed, bot threads, review not covered, no PR) · ⏳ CI
   running · ✅ ready · 🏁 merged · 🚫 closed.
 - Notifications (N2, macOS by default, `settings.notify` overrides) only for a
   reason that wasn't there last pass (N3): CI red, restack conflict, human
