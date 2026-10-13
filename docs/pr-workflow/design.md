@@ -384,8 +384,10 @@ still full copies; `pr-config init --force` replaces one with empty blocks.
 **SuperDB notes (0.3.0, observed 2026-10-13):**
 - **No here-strings or redirects:** `super` reads nothing from `<<<` or from
   a `<` redirect of a file, so input is always piped.
-- **Optional fields need 0.2.0+:** `{a?:string}` doesn't parse on older builds
-  (0.1.0 or the 2025 dev pins). The config types need it.
+- **0.3.0 only:** every pr-* command runs `super -version` once at start and
+  refuses anything else ("needs super 0.3.0, but … is v0.2.0"). 0.3.0 is the
+  only version these notes were observed on. The config types' optional fields
+  (`{a?:string}`) don't parse on 0.1.0 or the 2025 dev pins at all.
 - **No lateral subqueries:** `unnest … into ( … aggregate … )` panicked
   ("context canceled") in 12 of 200 runs. The merge uses plain `unnest` and
   `aggregate … by` instead, with 0 failures in 200 runs, and 0 in 450 calls of

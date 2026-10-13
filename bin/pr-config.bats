@@ -521,17 +521,16 @@ fake_super() {
 
 pin_setup() {
   export REAL_SUPER SUPER_LOG="$TMP/super-calls" ASDF_DATA_DIR="$TMP/asdf"
-  # A real binary, not the asdf shim: the shim breaks once HOME or ASDF_DATA_DIR move.
-  # The first one new enough for the config types (optional fields: 0.2.0+).
+  # A real 0.3.0 binary, not the asdf shim: the shim breaks once HOME or
+  # ASDF_DATA_DIR move.
   REAL_SUPER=
   local c
   for c in /opt/homebrew/bin/super "$HOME"/.asdf/installs/superdb/*/bin/super; do
-    [[ -x $c ]] || continue
-    echo '{}' | "$c" -i json -c 'type t = {a?:int64} values cast(this, <t>)' - >/dev/null 2>&1 || continue
+    [[ -x $c && $("$c" -version 2>/dev/null) == "Version: v0.3.0" ]] || continue
     REAL_SUPER=$c
     break
   done
-  [[ -n $REAL_SUPER ]] || skip "no real super 0.2.0+ binary on this machine"
+  [[ -n $REAL_SUPER ]] || skip "no real super 0.3.0 binary on this machine"
   fake_super "$TMP/decoy" shim
   PATH="$TMP/decoy:$PATH"
   write_global "$GLOBAL"
@@ -570,6 +569,73 @@ pin_setup() {
   ASDF_SUPERDB_VERSION=9.9.9 run "$PR_CONFIG" step describe
   [ "$status" -eq 0 ]
   [ "$(sort -u "$SUPER_LOG")" = shim ]
+}
+
+# old_super <dir> <version> — a super that reports <version>, otherwise the real one.
+old_super() {
+  mkdir -p "$1"
+  printf '#!/usr/bin/env bash\n[[ $1 == -version ]] && { echo "Version: v%s"; exit 0; }\nexec "$REAL_SUPER" "$@"\n' "$2" > "$1/super"
+  chmod +x "$1/super"
+}
+
+@test "super: any version but 0.3.0 is refused, naming the one found" {
+  pin_setup
+  old_super "$ASDF_DATA_DIR/installs/superdb/0.2.0/bin" 0.2.0
+  ASDF_SUPERDB_VERSION=0.2.0 run "$PR_CONFIG" step describe
+  [ "$status" -eq 1 ]
+  [ "$output" = "pr-config: needs super 0.3.0, but $ASDF_DATA_DIR/installs/superdb/0.2.0/bin/super is v0.2.0" ]
+}
+
+@test "super: one that won't run is refused" {
+  pin_setup
+  mkdir -p "$TMP/broken"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP/broken/super"
+  chmod +x "$TMP/broken/super"
+  mkdir -p "$TMP/home"
+  HOME="$TMP/home" PATH="$TMP/broken:$PATH" run "$PR_CONFIG" step describe
+  [ "$status" -eq 1 ]
+  [ "$output" = "pr-config: needs super 0.3.0, but super didn't run" ]
+}
+
+@test "super: every command checks the version before reading config" {
+  pin_setup
+  old_super "$ASDF_DATA_DIR/installs/superdb/0.2.0/bin" 0.2.0
+  # Nothing real gets installed if pr-watch install gets past the check.
+  mkdir -p "$TMP/home" "$TMP/fakebin"
+  printf '#!/usr/bin/env bash\necho "$*" >> "%s/launchctl-calls"\n' "$TMP" > "$TMP/fakebin/launchctl"
+  chmod +x "$TMP/fakebin/launchctl"
+  local cmd
+  for cmd in "pr-config show" "pr-state" "pr-act address" "pr-watch install"; do
+    HOME="$TMP/home" PATH="$TMP/fakebin:$PATH" PR_WATCH_LAUNCH_AGENTS="$TMP/agents" \
+      PR_TEND_STATE_DIR="$TMP/state" STATUS_DIR="$TMP/status" ASDF_SUPERDB_VERSION=0.2.0 \
+      run "$BATS_TEST_DIRNAME"/$cmd
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"needs super 0.3.0, but "*" is v0.2.0"* ]]
+  done
+  [ ! -e "$TMP/launchctl-calls" ]
+  [ ! -e "$TMP/agents" ]
+}
+
+@test "super: the version is checked once per command, not per query" {
+  pin_setup
+  fake_super "$ASDF_DATA_DIR/installs/superdb/0.3.0/bin" pinned
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1" >> "$SUPER_LOG"\nexec "$REAL_SUPER" "$@"\n' \
+    > "$ASDF_DATA_DIR/installs/superdb/0.3.0/bin/super"
+  write_branch feat '{"settings":{"verify":"make"}}'
+  ASDF_SUPERDB_VERSION=0.3.0 run "$PR_CONFIG" show
+  [ "$status" -eq 0 ]
+  [ "$(grep -c -- -version "$SUPER_LOG")" -eq 1 ]
+  [ "$(wc -l < "$SUPER_LOG")" -gt 3 ]
+}
+
+@test "super: help needs no super" {
+  pin_setup
+  old_super "$ASDF_DATA_DIR/installs/superdb/0.2.0/bin" 0.2.0
+  local cmd
+  for cmd in pr-config pr-state pr-act pr-watch; do
+    ASDF_SUPERDB_VERSION=0.2.0 run "$BATS_TEST_DIRNAME/$cmd" --help
+    [ "$status" -eq 0 ]
+  done
 }
 
 @test "super: no pin at all falls back to super on PATH" {

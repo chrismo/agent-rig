@@ -90,6 +90,7 @@ while (( $# )); do
   shift
 done
 set -- "${args[@]}"
+prc_super_init || exit 1
 nobranch=${opt[--no-branch]:-false}
 
 # `|| exit $?` turns errexit off inside each prc_ call, as in pr-act and pr-watch.

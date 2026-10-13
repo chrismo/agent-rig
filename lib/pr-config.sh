@@ -1,5 +1,5 @@
 # Harness and settings for the PR pipeline. Sourced by bin/pr-config, pr-act,
-# pr-watch and pr-state; needs bash 5 and super. See docs/pr-workflow/design.md,
+# pr-watch and pr-state; needs bash 5 and super 0.3.0. See docs/pr-workflow/design.md,
 # "Config files".
 #
 # Every function returns 1 on an error (message on stderr) and never exits:
@@ -87,7 +87,21 @@ prc_superdb_binary() {
   if [[ -n $version && -x $bin ]]; then printf '%s' "$bin"; else printf 'super'; fi
 }
 
-prc_super() { "$(prc_superdb_binary)" "$@"; }
+# Requires 0.3.0, the only version this has run on. Sets PRC_SUPER_BIN, so call
+# it outside $( ); otherwise every prc_super call repeats the check.
+prc_super_init() {
+  local bin v
+  bin=$(prc_superdb_binary)
+  v=$("$bin" -version 2>/dev/null) || v=
+  [[ -n $v ]] || { prc_err "needs super 0.3.0, but $bin didn't run"; return; }
+  [[ $v == "Version: v0.3.0" ]] || { prc_err "needs super 0.3.0, but $bin is ${v#Version: }"; return; }
+  PRC_SUPER_BIN=$bin
+}
+
+prc_super() {
+  [[ -n ${PRC_SUPER_BIN:-} ]] || prc_super_init || return
+  "$PRC_SUPER_BIN" "$@"
+}
 
 # prc_problems <global|branch> <name>: a layer's JSON on stdin; reports each
 # problem as "<name>: <problem>" and returns 1 if there are any.
@@ -96,7 +110,7 @@ prc_problems() {
   only=$(printf '"settings.%s",' "${PRC_GLOBAL_ONLY[@]}")
   out=$(prc_super -i json -f line -c "$PRC_TYPES
     type config = {harness?:harness,harnesses?:{claude?:hclaude,pi?:hpi},steps?:steps,settings?:${1}_settings}
-    ${PRC_CHECK/GLOBAL_ONLY_/[${only%,}]}" -) || { prc_err "couldn't check $2 (the types need super 0.2.0 or later)"; return; }
+    ${PRC_CHECK/GLOBAL_ONLY_/[${only%,}]}" -) || { prc_err "couldn't check $2"; return; }
   [[ -n $out ]] || return 0
   while IFS= read -r line; do prc_err "$2: $line"; done <<<"$out"
   return 1

@@ -194,10 +194,10 @@ uninstall_job() {
 }
 
 case ${1:-} in
-  "") run_pass ;;
+  "") prc_super_init || exit 1; run_pass ;;
   status)
     if [[ -f $STATE_DIR/last-pass ]]; then sed "s/$(printf '\t')/  /g" "$STATE_DIR/last-pass"; else echo "no pass yet"; fi ;;
-  install) install_job ;;
+  install) prc_super_init || exit 1; install_job ;;
   uninstall) uninstall_job ;;
   -h|--help) sed -n '3,/^$/s/^# \{0,1\}//p' "$0" ;;
   *) echo "pr-watch: unknown command: $1" >&2; exit 1 ;;
