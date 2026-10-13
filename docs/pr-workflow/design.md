@@ -230,6 +230,91 @@ watcher pass also sweeps `refs/pr-tend/<b>/*` whose branch no longer exists
 enrolled any other way, `pr-state` derives missing records (A2 fallback chain),
 verifies ancestry, and writes them.
 
+### Harness, model, effort and provider per step (proposed)
+
+Today only `pr-tend.<harness>.args` exists (one whitespace-split string per
+harness). Proposed, modeled on Sortie's per-rule settings blocks
+(`docs/workflow-reference.md`, "Rule settings blocks", read 2026-10-12): a step
+may override model and effort, and the harness itself.
+
+Keys, all in git config. Git itself only layers the *same* key across scopes
+(system < global < repo < worktree, last wins; multi-valued keys accumulate
+under `--get-all`). The step-to-harness fallback and the empty-value clear below
+are not git behavior (observed in a scratch repo, 2026-10-12): they need one
+resolver in our code, whichever store holds the values.
+
+| Key | Meaning |
+|---|---|
+| `pr-tend.harness` / `pr-tend.<step>.harness` | which harness a step runs on; `branch.<b>.pr-harness` still wins once a session exists |
+| `pr-tend.<harness>.model`, `.effort`, `.args` | base settings for a harness |
+| `pr-tend.pi.provider` | pi only; Claude has no equivalent |
+| `pr-tend.<step>.<harness>.model`, `.effort`, `.provider`, `.args` | override for one step on one harness |
+
+`<step>` is a verb name (`address`, `review`, `ci-fix`, `describe`, ...).
+
+Resolution, per key: the step-and-harness block replaces the harness block's
+value whole; an unwritten key is inherited; an **empty value** clears the
+inherited key so the runtime's own default applies (git config can't store
+null, so `git config pr-tend.address.pi.effort ""` plays that part). Not
+overridable per step: the harness command and timeouts (`pr-tend.stepTimeout`
+stays global).
+
+Warn when a step override sets `model` but not `effort` and an `effort` is
+inherited, because level names depend on the model (Sortie's
+`agent.effort.inherited`).
+
+Each adapter maps these keys to its CLI flags. The flag names for `claude` and
+`pi` are **not yet checked**, and `args` stays as the escape hatch (how it
+orders against the typed keys is undecided).
+
+To verify: whether a resumed session (`pr-session`) accepts a different model
+or effort than it started with; Sortie says a change between attempts doesn't
+end its session, which is untested here.
+
+### Config files: XDG global + branch-local copy (proposed)
+
+Instead of dotted git-config keys, the same settings live in JSON (the scripts
+already use `jq`):
+
+- **Global:** `${XDG_CONFIG_HOME:-~/.config}/pr-tend/config.json`, one per
+  machine (no system layer; single user).
+- **Branch-local:** a hidden JSON file per branch. Where it lives (worktree
+  dotfile, git-ignored, vs under `.git/` shared across worktrees) is undecided.
+
+Shape (same keys as the git-config draft above):
+
+```json
+{"harness": "claude",
+ "harnesses": {"claude": {"model": "...", "effort": "high"},
+               "pi": {"provider": "...", "model": "...", "effort": "medium"}},
+ "steps": {"address": {"harness": "pi", "pi": {"model": "...", "effort": null}}}}
+```
+
+**Init is a copy.** Starting (or enrolling) a branch copies the global file to
+the branch-local one. Per-PR differences are overrides written into that copy by
+commands, because they're common: some PRs are cheap and easy, others thorough
+and need a frontier model. (Command flags for this are not designed.)
+
+**Resolution** for a step, later layers win, `null` removes the key:
+global harness block, branch harness block, global step block, branch step
+block. The harness itself is picked branch step, global step, branch default,
+global default, `claude`.
+
+Tested 2026-10-12 with SuperDB v0.3.0 (`collect` the files into `[global,
+branch]`, `coalesce(…, {})` for a missing layer, record spread to merge,
+`flatten | where value is not null | unflatten` to drop nulls). Observed: a
+branch override beats a global step block, a branch can switch the harness,
+`null` clears an inherited key, and a missing branch file resolves from global
+alone. The same overlay works whether the branch file is a full copy or only the
+overrides, so copy-at-init vs read-through is a policy choice, not a resolver
+change. With a full copy, later edits to the global file don't reach existing
+branches, and no way to refresh a branch from global is specified.
+
+Caveats from the test: spread replaces a nested map whole (one level deep, as in
+Sortie); a misspelled step or harness resolves to nothing with no error, so the
+real resolver needs validation; this makes SuperDB a dependency of the PR
+scripts (see the `jq` TODO under Open).
+
 ## Atomic actions
 
 ### Observe — deterministic, read-only (`pr-state`)
@@ -636,6 +721,13 @@ short-lived, so it can't own children like their daemons do. Plan:
 - N2 channel beyond the tab glyph (PushNotification? `say`?)
 - Agent-reply marking, if/when agents reply on human threads (deferred)
 - **Fork per step** — spike done, both harnesses fork identically; now just a decision
+- **Where do named harness profiles live?** Git config (as in "Harness, model,
+  effort and provider per step") vs an XDG file such as
+  `~/.config/pr-tend/` holding reusable profiles (harness, provider, model,
+  effort, args) that steps reference by name. Git config is where every setting
+  lives so far; XDG is used only for watcher state (`~/.local/state/pr-tend`).
+  Leaning XDG JSON plus a branch-local copy; see "Config files: XDG global +
+  branch-local copy".
 - **TODO: SuperDB instead of `jq`?** `pr-state`, `pr-act` and `pr-watch` shell
   out to `jq` (including the `CLASSIFY` filter); other scripts in this repo use
   `super`. Decide whether to move the PR scripts over, or document why not.
