@@ -100,6 +100,27 @@ prc_files() {
   printf '{"i":1,"v":%s}\n{"i":2,"v":%s}\n' "$g" "$bj" | prc_super -i json -j -c "${PRC_MERGE/WHERE_/}" -
 }
 
+# prc_paths <branch-or-empty> <no-branch: true|false>: "global  <path>" and
+# "branch  <path>", with "  (missing)" after a file that doesn't exist.
+prc_paths() {
+  local b=$1 f why=
+  prc_path_line global "$(prc_global_file)"
+  [[ $2 != true ]] || return 0
+  if [[ -z $b ]]; then
+    if ! git rev-parse --git-dir >/dev/null 2>&1; then
+      why="not a git repository"
+    else
+      b=$(git branch --show-current) || return
+      [[ -n $b ]] || why="detached HEAD"
+    fi
+  fi
+  if [[ -n $why ]]; then echo "branch  (none: $why)"; return 0; fi
+  f=$(prc_branch_file "$b") || return
+  prc_path_line branch "$f"
+}
+
+prc_path_line() { if [[ -e $2 ]]; then echo "$1  $2"; else echo "$1  $2  (missing)"; fi; }
+
 # prc_get <path> <branch-or-empty> <no-branch: true|false> [json]: one value.
 # A string prints raw, a list one element per line, an object as JSON; json
 # prints any of them as JSON. A null in a file falls through to the built-in
@@ -119,6 +140,15 @@ prc_get() {
     op=unnest
   fi
   printf '{"i":0,"v":%s}\n{"i":1,"v":%s}\n' "$PRC_DEFAULTS" "$files" | prc_super -i json "${fmt[@]}" -c "$q | $op $expr" -
+}
+
+# prc_show <branch-or-empty> <no-branch: true|false>: the whole merged config,
+# defaults included, as pretty JSON.
+prc_show() {
+  local files
+  files=$(prc_files "$1" "$2") || return
+  printf '{"i":0,"v":%s}\n{"i":1,"v":%s}\n' "$PRC_DEFAULTS" "$files" \
+    | prc_super -i json -J -c "${PRC_MERGE/WHERE_/| where v is not null}" -
 }
 
 # prc_step <step> <branch-or-empty> <forced-harness-or-empty>: what <step> runs
@@ -218,5 +248,6 @@ prc_init() { # <force> <branch>
   [[ $force == true || ! -e $dest ]] || { prc_err "$dest exists; --force overwrites it"; return; }
   mkdir -p "$(dirname "$dest")" || return
   prc_layer "$src" >/dev/null || return
-  cp "$src" "$dest"
+  cp "$src" "$dest" || return
+  echo "wrote $dest"
 }

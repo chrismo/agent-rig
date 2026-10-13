@@ -3,33 +3,40 @@
 # pr-config - harness and settings for the PR pipeline.
 #
 # Usage:
-#   pr-config init --global [--force]            create the global file
-#   pr-config init [--force] [<branch>]          copy the global file to <branch>
-#   pr-config get [--no-branch] [--json] <path> [<branch>]
-#                                                one value; exit 3 when unset
-#   pr-config step [--harness <h>] <step> [<branch>]
-#                                                what <step> runs with, as JSON
-#   pr-config set [--global | --branch <b>] [--json] <path> <value>
-#                                                write one value
+#   pr-config get   [--no-branch] [--json] <path> [<branch>]
+#   pr-config step  [--harness <h>] <step> [<branch>]
+#   pr-config set   [--global | --branch <b>] [--json] <path> <value>
 #   pr-config unset [--global | --branch <b>] <path>
-#                                                remove a key so it inherits
+#   pr-config show  [--no-branch] [<branch>]
+#   pr-config files [--no-branch] [<branch>]
+#   pr-config init  --global [--force]
+#   pr-config init  [--force] [<branch>]
 #
-# Files:
-#   global  $PR_TEND_CONFIG, else ~/.config/pr-tend/config.json ($XDG_CONFIG_HOME)
-#   branch  <git common dir>/pr-tend/<branch>.json, shared by all worktrees
+# Examples:
+#   pr-config get settings.verify                    one value
+#   pr-config step address                           what a step runs with (JSON)
+#   pr-config set --global harnesses.claude.model opus
+#   pr-config set --json settings.botLogin '["marge"]'
+#   pr-config unset steps.address.harness            inherit it again
+#   pr-config show                                   everything, merged
+#   pr-config files                                  where the files are
 #
-# The branch file is merged over the global file, and both over the built-in
-# defaults (harness claude; settings remote origin, stepTimeout 1800, interval
-# 300, replyPrefix "🤖 "; verify, notify, botLogin, botIgnore and botIgnoreBody
-# empty). null in a file removes the key from the files; a default still
-# applies. <path> is dotted, e.g. settings.verify, harnesses.claude.model,
-# steps.address.harness. <branch> defaults to the current one; --no-branch
-# skips the branch file. get prints a string raw, a list one element per line
-# and an object as JSON; --json prints JSON for all of them. step merges the
-# step's block for its harness over that harness's block; --harness picks the
-# harness instead. Exit 1 is always an error. set/unset write the current
-# branch's file unless --global or --branch. Values are strings; --json takes a
-# number, list, object or null.
+# Layers (top wins):
+#   branch    <main repo>/.git/pr-tend/<branch>.json, shared by all worktrees
+#             (pr-config files prints the paths)
+#   global    ~/.config/pr-tend/config.json ($PR_TEND_CONFIG, $XDG_CONFIG_HOME)
+#   defaults  harness claude; settings.remote origin, stepTimeout 1800,
+#             interval 300, replyPrefix "🤖 "; the other settings empty
+#
+# Notes:
+#   - null in a file removes the key; a default still applies
+#   - get prints strings raw, lists one per line, objects as JSON (--json: all)
+#   - exit 3: no value and no default. exit 1: an error
+#   - <branch> defaults to the current one; --no-branch skips the branch file
+#   - set/unset write the current branch's file unless --global or --branch
+#   - set values are strings; --json takes a number, list, object or null
+#   - step: the harness's block, with the step's block for it laid over it
+#
 # See docs/pr-workflow/design.md, "Config files".
 
 set -euo pipefail
@@ -58,6 +65,14 @@ case $verb in
     done
     (( $# )) || usage
     prc_get "$1" "${2:-}" "$nobranch" $json || exit $? ;;
+  files|show)
+    nobranch=false
+    if [[ ${1:-} == --no-branch ]]; then nobranch=true; shift; fi
+    if [[ $verb == files ]]; then
+      prc_paths "${1:-}" "$nobranch" || exit $?
+    else
+      prc_show "${1:-}" "$nobranch" || exit $?
+    fi ;;
   step)
     forced=
     if [[ ${1:-} == --harness ]]; then (( $# >= 2 )) || usage; forced=$2; shift 2; fi

@@ -174,11 +174,21 @@ GLOBAL='{"harness":"claude",
   [ "$(get_field build model)" = strong ]
 }
 
-@test "init: copies the global file to the branch file" {
+@test "init: copies the global file to the branch file and says where" {
   write_global "$GLOBAL"
   run "$PR_CONFIG" init
   [ "$status" -eq 0 ]
   cmp "$PR_TEND_CONFIG" "$(branch_file feat)"
+  [ "$output" = "wrote $(branch_file feat)" ]
+}
+
+@test "init: from a linked worktree, names the shared file in the main repo" {
+  write_global "$GLOBAL"
+  git worktree add -q "$TMP/wt" -b wt
+  cd "$TMP/wt"
+  run "$PR_CONFIG" init
+  [ "$status" -eq 0 ]
+  [ "$output" = "wrote $(branch_file wt)" ]
 }
 
 @test "init: a named branch" {
@@ -248,9 +258,11 @@ GLOBAL='{"harness":"claude",
 @test "--help: every verb is listed" {
   run "$PR_CONFIG" --help
   [ "$status" -eq 0 ]
-  [[ "$output" == *"init --global"* ]]
+  [[ "$output" =~ init\ +--global ]]
   [[ "$output" == *"pr-config get"* ]]
   [[ "$output" == *"pr-config step"* ]]
+  [[ "$output" == *"pr-config files"* ]]
+  [[ "$output" == *"pr-config show"* ]]
   [[ "$output" != *"pr-config setting"* ]]
 }
 
@@ -258,6 +270,93 @@ GLOBAL='{"harness":"claude",
   run "$PR_CONFIG" init nope
   [ "$status" -ne 0 ]
   [[ "$output" == *"no such branch"* ]]
+}
+
+# ── files: where the layers live ────────────────────────────────────────────
+
+@test "files: lists the global and branch paths, marking missing ones" {
+  run "$PR_CONFIG" files
+  [ "$status" -eq 0 ]
+  [ "$output" = "global  $PR_TEND_CONFIG  (missing)
+branch  $(branch_file feat)  (missing)" ]
+}
+
+@test "files: existing files are listed without a mark" {
+  write_global '{}'
+  write_branch feat '{}'
+  run "$PR_CONFIG" files
+  [ "$output" = "global  $PR_TEND_CONFIG
+branch  $(branch_file feat)" ]
+}
+
+@test "files: a named branch, and a slash in its name" {
+  run "$PR_CONFIG" files topic/sub
+  [ "$(sed -n 2p <<<"$output")" = "branch  $TMP/repo/.git/pr-tend/topic%2Fsub.json  (missing)" ]
+}
+
+@test "files: from a linked worktree, the branch file is in the main repo" {
+  git worktree add -q "$TMP/wt" -b wt
+  cd "$TMP/wt"
+  run "$PR_CONFIG" files
+  [ "$(sed -n 2p <<<"$output")" = "branch  $(branch_file wt)  (missing)" ]
+}
+
+@test "files: detached HEAD or outside a repo says why there's no branch file" {
+  git switch -q --detach
+  run "$PR_CONFIG" files
+  [ "$status" -eq 0 ]
+  [ "$(sed -n 2p <<<"$output")" = "branch  (none: detached HEAD)" ]
+  cd "$TMP"
+  run "$PR_CONFIG" files
+  [ "$status" -eq 0 ]
+  [ "$(sed -n 2p <<<"$output")" = "branch  (none: not a git repository)" ]
+}
+
+@test "files --no-branch: only the global file" {
+  run "$PR_CONFIG" files --no-branch
+  [ "$output" = "global  $PR_TEND_CONFIG  (missing)" ]
+}
+
+@test "files: an explicit branch outside a repo fails" {
+  cd "$TMP"
+  run "$PR_CONFIG" files feat
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not a git repository"* ]]
+}
+
+# ── show: the whole merged config ───────────────────────────────────────────
+
+@test "show: with no files, the built-in defaults, pretty-printed" {
+  run "$PR_CONFIG" show
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .harness <<<"$output")" = claude ]
+  [ "$(jq -r .settings.remote <<<"$output")" = origin ]
+  [ "$(wc -l <<<"$output")" -gt 1 ]
+}
+
+@test "show: the branch file over the global file over the defaults, nulls applied" {
+  write_global '{"harnesses":{"claude":{"model":"opus"}},"settings":{"stepTimeout":900,"verify":"make"}}'
+  write_branch feat '{"harnesses":{"claude":{"effort":"max"}},"settings":{"stepTimeout":null}}'
+  run "$PR_CONFIG" show
+  [ "$status" -eq 0 ]
+  [ "$(jq -c .harnesses.claude <<<"$output")" = '{"effort":"max","model":"opus"}' ]
+  [ "$(jq -r .settings.stepTimeout <<<"$output")" = 1800 ]
+  [ "$(jq -r .settings.verify <<<"$output")" = make ]
+}
+
+@test "show: a named branch, and --no-branch" {
+  write_global '{"settings":{"verify":"global"}}'
+  write_branch other '{"settings":{"verify":"other"}}'
+  write_branch feat '{"settings":{"verify":"feat"}}'
+  [ "$("$PR_CONFIG" show other | jq -r .settings.verify)" = other ]
+  [ "$("$PR_CONFIG" show --no-branch | jq -r .settings.verify)" = global ]
+}
+
+@test "show: an unreadable file fails and names it" {
+  printf '{not json\n' > "$PR_TEND_CONFIG"
+  run "$PR_CONFIG" show
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"$PR_TEND_CONFIG"* ]]
 }
 
 # ── get: any dotted path; built-in defaults under the files ────────────────
