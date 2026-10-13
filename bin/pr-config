@@ -1,122 +1,44 @@
 #!/usr/bin/env bash5
 #
-# pr-config - per-step harness settings for the PR pipeline.
+# pr-config - harness and settings for the PR pipeline.
 #
-# Usage: pr-config get [--harness <name>] <step> [<branch>]
-#        pr-config setting [--no-branch] <key> [<branch>]
-#        pr-config init [--force] [<branch>]
+# Usage:
+#   pr-config init --global [--force]            create the global file
+#   pr-config init [--force] [<branch>]          copy the global file to <branch>
+#   pr-config get [--harness <h>] <step> [<branch>]
+#                                                what <step> runs with, as JSON
+#   pr-config setting [--no-branch] <key> [<branch>]
+#                                                one setting; exit 3 when unset
+#   pr-config set [--global | --branch <b>] [--json] <path> <value>
+#                                                write one value
+#   pr-config unset [--global | --branch <b>] <path>
+#                                                remove a key so it inherits
 #
-#   get    print the settings <step> runs with as one JSON object: harness,
-#          then model / effort / provider / args as set. <branch> defaults to
-#          the current one. --harness forces the harness (a stored session's,
-#          or a command-line choice) and reads that harness's blocks.
-#   setting  print one value from the "settings" block, one line per element
-#          for a list. Exits 3 when unset; 1 is always an error. A key absent from both files falls
-#          back to git config pr-tend.<key>; a key set to null is unset, with no
-#          fallback. Outside a repo only the global file is read. --no-branch
-#          skips the branch file, for callers with no branch (the watcher).
-#   init   copy the global file to the branch's file (an empty overlay when
-#          there is no global file). Refuses to overwrite without --force.
+# Files:
+#   global  $PR_TEND_CONFIG, else ~/.config/pr-tend/config.json ($XDG_CONFIG_HOME)
+#   branch  <git common dir>/pr-tend/<branch>.json, shared by all worktrees
 #
-# Files: global  $PR_TEND_CONFIG, else ${XDG_CONFIG_HOME:-~/.config}/pr-tend/config.json
-#        branch  <git common dir>/pr-tend/<branch>.json, "/" written as %2F,
-#                shared by every worktree of the repo
-#
-# Later layers win; null removes the key: global harness block, branch harness
-# block, global step block, branch step block. See docs/pr-workflow/design.md,
-# "Config files".
+# Lookup: branch file, then global file, then git config pr-tend.<key>, then
+# the built-in default (remote origin, stepTimeout 1800, interval 300,
+# replyPrefix "🤖 "; verify, notify and botLogin empty). null in a file skips to
+# the default. <branch> defaults to the current one; --no-branch skips the
+# branch file. --harness reads that harness's blocks instead of the configured
+# one. A list setting prints one element per line. Exit 1 is always an error.
+# set/unset write the current branch's file unless --global or --branch; <path>
+# is dotted, e.g. harnesses.claude.model, steps.address.harness, settings.verify.
+# Values are strings; --json takes a number, list, object or null.
+# See docs/pr-workflow/design.md, "Config files".
 
 set -euo pipefail
+
+# shellcheck source=../lib/pr-config.sh
+source "$(dirname "$(realpath "$0")")/../lib/pr-config.sh"
 
 die() { echo "pr-config: $*" >&2; exit 1; }
 help() { sed -n '3,/^$/s/^# \{0,1\}//p' "$0"; }
 usage() { help >&2; exit 1; }
 
-global_file() { echo "${PR_TEND_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/pr-tend/config.json}"; }
-
-branch_file() { # <branch>
-  local dir name=${1//[%]/%25}
-  dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || die "not a git repository"
-  echo "$dir/pr-tend/${name//\//%2F}.json"
-}
-
-# layer <file>: its JSON, or {} when it doesn't exist.
-layer() {
-  [[ -e $1 ]] || { echo '{}'; return; }
-  jq -e 'type == "object"' "$1" >/dev/null || die "not a JSON object: $1"
-  cat "$1"
-}
-
-branch_arg() { # <branch-or-empty>
-  local b=${1:-$(git branch --show-current 2>/dev/null || true)}
-  [[ -n $b ]] || die "detached HEAD; name a branch"
-  echo "$b"
-}
-
-# Duplicated from dscout bin/lib/superdb.sh. The asdf shim re-resolves on every
-# call (~14x slower), so call the pinned install directly; fall back to `super`
-# on PATH when no pinned install exists.
-superdb_binary() {
-  local version=${ASDF_SUPERDB_VERSION:-} bin
-  [[ -n $version ]] || version=$(awk '$1 == "superdb" { print $2 }' "$HOME/.tool-versions" 2>/dev/null || true)
-  bin="${ASDF_DATA_DIR:-$HOME/.asdf}/installs/superdb/$version/bin/super"
-  if [[ -n $version && -x $bin ]]; then printf '%s' "$bin"; else printf 'super'; fi
-}
-
-get() { # <step> <branch> <forced-harness-or-empty>
-  local step=$1 forced=$3 query super hexpr gf bf gj bj
-  super=$(superdb_binary)
-  [[ $step =~ ^[a-z][a-z0-9-]*$ ]] || die "invalid step name: $step"
-  hexpr='coalesce(b.steps[s].harness, g.steps[s].harness, b.harness, g.harness, "claude")'
-  if [[ -n $forced ]]; then
-    [[ $forced =~ ^[a-z][a-z0-9-]*$ ]] || die "invalid harness name: $forced"
-    hexpr='"'$forced'"'
-  fi
-  query='aggregate cfg:=collect(this)
-    | values {g: cfg[0], b: cfg[1], s: "'$step'"}
-    | values {g, b, s, h: '"$hexpr"'}
-    | values {harness: h, ...coalesce(g.harnesses[h], {}), ...coalesce(b.harnesses[h], {}),
-              ...coalesce(g.steps[s][h], {}), ...coalesce(b.steps[s][h], {})}
-    | values flatten(this) | unnest this | where value is not null
-    | aggregate kv:=collect(this) | values unflatten(kv)'
-  gf=$(global_file)
-  bf=$(branch_file "$2")
-  gj=$(layer "$gf")
-  bj=$(layer "$bf")
-  printf '%s\n%s\n' "$gj" "$bj" | "$super" -j -c "$query" -
-}
-
-setting() { # <key> <branch-or-empty> <no-branch: true|false>
-  local key=$1 cur=$2 nobranch=$3 g b bf res
-  [[ $key =~ ^[A-Za-z][A-Za-z0-9]*$ ]] || die "invalid setting key: $key"
-  if [[ $nobranch == true ]]; then cur=; elif [[ -z $cur ]]; then cur=$(git branch --show-current 2>/dev/null || true); fi
-  g=$(layer "$(global_file)")
-  if [[ -n $cur ]]; then bf=$(branch_file "$cur"); b=$(layer "$bf"); else b='{}'; fi
-  res=$(jq -nc --argjson g "$g" --argjson b "$b" --arg k "$key" '
-    [$b, $g] | map(.settings // {} | select(has($k)))
-    | if length == 0 then {found: false}
-      else {found: true, lines: (.[0][$k] | if type == "array" then map(tostring)
-            elif . == null then [] else [tostring] end)} end')
-  if [[ $(jq -r .found <<<"$res") == true ]]; then
-    jq -e '.lines | length > 0' <<<"$res" >/dev/null || return 3
-    jq -r '.lines[]' <<<"$res"
-  else
-    local rc=0
-    git config --get-all "pr-tend.$key" || rc=$?
-    if (( rc == 1 )); then return 3; else return "$rc"; fi
-  fi
-}
-
-init() { # <force> <branch>
-  local force=$1 b=$2 src dest
-  git rev-parse -q --verify "refs/heads/$b" >/dev/null || die "no such branch: $b"
-  src=$(global_file)
-  dest=$(branch_file "$b")
-  [[ $force == true || ! -e $dest ]] || die "$dest exists; --force overwrites it"
-  mkdir -p "$(dirname "$dest")"
-  if [[ -e $src ]]; then layer "$src" >/dev/null && cp "$src" "$dest"; else echo '{}' > "$dest"; fi
-}
-
+# `|| exit $?` turns errexit off inside each prc_ call, as in pr-act and pr-watch.
 (( $# )) || usage
 verb=$1; shift
 case $verb in
@@ -126,17 +48,48 @@ case $verb in
     if [[ ${1:-} == --harness ]]; then (( $# >= 2 )) || usage; forced=$2; shift 2; fi
     (( $# )) || usage
     step=$1
-    branch=$(branch_arg "${2:-}")
-    get "$step" "$branch" "$forced" ;;
+    branch=$(prc_branch_arg "${2:-}") || exit $?
+    prc_get "$step" "$branch" "$forced" || exit $? ;;
   setting)
     nobranch=false
     if [[ ${1:-} == --no-branch ]]; then nobranch=true; shift; fi
     (( $# )) || usage
-    setting "$1" "${2:-}" "$nobranch" ;;
+    prc_setting "$1" "${2:-}" "$nobranch" || exit $? ;;
   init)
-    force=false
-    if [[ ${1:-} == --force ]]; then force=true; shift; fi
-    branch=$(branch_arg "${1:-}")
-    init "$force" "$branch" ;;
+    force=false global=false
+    while [[ ${1:-} == --* ]]; do
+      case $1 in
+        --force) force=true ;;
+        --global) global=true ;;
+        *) die "unknown option: $1" ;;
+      esac
+      shift
+    done
+    if $global; then
+      (( $# == 0 )) || usage
+      prc_init_global "$force" || exit $?
+    else
+      branch=$(prc_branch_arg "${1:-}") || exit $?
+      prc_init "$force" "$branch" || exit $?
+    fi ;;
+  set|unset)
+    global=false json=false branch=
+    while [[ ${1:-} == --* ]]; do
+      case $1 in
+        --global) global=true ;;
+        --branch) (( $# >= 2 )) || usage; branch=$2; shift ;;
+        --json) [[ $verb == set ]] || die "unknown option: $1"; json=true ;;
+        *) die "unknown option: $1" ;;
+      esac
+      shift
+    done
+    file=$(prc_target_file "$global" "$branch") || exit $?
+    if [[ $verb == unset ]]; then
+      (( $# == 1 )) || usage
+      prc_unset "$file" "$1" || exit $?
+    else
+      (( $# == 2 )) || usage
+      prc_set "$file" "$1" "$2" "$json" || exit $?
+    fi ;;
   *) die "unknown verb: $verb" ;;
 esac

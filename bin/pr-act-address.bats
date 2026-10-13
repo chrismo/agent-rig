@@ -50,6 +50,23 @@ EOF
   cat > "$TMP/fakebin/claude" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$@" > "$FX/claude.args"
+# Real claude's parser: --allowedTools / --disallowedTools are variadic and take
+# every following word that isn't a flag, so a prompt placed after them is lost.
+args=("$@") prompt= i=0
+while (( i < $# )); do
+  case ${args[i]} in
+    --allowedTools|--disallowedTools)
+      i=$((i + 1))
+      while (( i < $# )) && [[ ${args[i]} != -* ]]; do i=$((i + 1)); done
+      continue ;;
+    --session-id|--resume|--output-format|--json-schema|--permission-mode|--model|--effort|--max-turns)
+      i=$((i + 2)); continue ;;
+    -*) ;;
+    *) prompt=${args[i]} ;;
+  esac
+  i=$((i + 1))
+done
+[[ -n $prompt ]] || { echo "Error: Input must be provided either through stdin or as a prompt argument when using --print" >&2; exit 1; }
 echo "$PWD" > "$FX/agent.cwd"
 [[ -x $FX/agent ]] && "$FX/agent"
 jq -n --argjson r "$(cat "$FX/result.json")" '{type: "result", is_error: false, structured_output: $r}'
@@ -172,11 +189,10 @@ remote_feat() { git -C "$TMP/origin.git" rev-parse feat; }
   [[ "$output" == *"1 human"* ]]
 }
 
-@test "behind, unpushed and locked: every reason listed, nothing run" {
-  state_fixture '.sync.up_to_date = false | .sync.behind = 2 | .push.ahead = 1 | .session.locked = true'
+@test "unpushed and locked: every reason listed, nothing run" {
+  state_fixture '.push.ahead = 1 | .session.locked = true'
   run "$PR_ACT" address
   [ "$status" -ne 0 ]
-  [[ "$output" == *"behind main by 2"* ]] || false
   [[ "$output" == *"1 unpushed"* ]] || false
   [[ "$output" == *"taken over"* ]] || false
   [[ "$output" == *"--force"* ]] || false
@@ -191,8 +207,25 @@ remote_feat() { git -C "$TMP/origin.git" rev-parse feat; }
   [[ "$output" == *"diverged"* ]]
 }
 
+@test "behind main alone only warns: no restack needed to address" {
+  state_fixture '.sync.up_to_date = false | .sync.behind = 10'
+  run "$PR_ACT" address
+  [ "$status" -eq 0 ]
+  [ -f "$FX/claude.args" ]
+  [[ "$output" == *"warning"*"behind main by 10"* ]]
+  [[ "$output" != *"restack first"* ]]
+}
+
+@test "behind main and conflicting is still refused" {
+  state_fixture '.sync.up_to_date = false | .sync.behind = 10 | .sync.conflict = true'
+  run "$PR_ACT" address
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"would conflict"* ]]
+  [ ! -f "$FX/claude.args" ]
+}
+
 @test "--force runs past the soft refusals" {
-  state_fixture '.sync.up_to_date = false | .sync.behind = 2'
+  state_fixture '.push.ahead = 1'
   run "$PR_ACT" address --force
   [ "$status" -eq 0 ]
   [ -f "$FX/claude.args" ]
@@ -357,14 +390,14 @@ remote_feat() { git -C "$TMP/origin.git" rev-parse feat; }
 
 # ── stopping short ───────────────────────────────────────────────────────────
 
-@test "--dry-run commits locally but pushes and posts nothing" {
+@test "--no-publish commits locally but pushes and posts nothing" {
   before=$(remote_feat)
-  run "$PR_ACT" address --dry-run
+  run "$PR_ACT" address --no-publish
   [ "$status" -eq 0 ]
   [ "$(git log -1 --format=%s)" = "Uppercase three" ]
   [ "$(remote_feat)" = "$before" ]
   [ "$(gh_ops)" = "nodes" ]
-  [[ "$output" == *"dry run"* ]] || false
+  [[ "$output" == *"not published"* ]] || false
   [[ "$output" == *"Uppercased it."* ]]
 }
 
@@ -434,7 +467,7 @@ EOF
   [ "$(gh_ops)" = "nodes" ]
 }
 
-@test "sync state unknown is refused like behind" {
+@test "sync state unknown is refused" {
   state_fixture '.sync.up_to_date = null | .sync.conflict = null'
   run "$PR_ACT" address
   [ "$status" -ne 0 ]

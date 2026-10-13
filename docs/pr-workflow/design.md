@@ -307,6 +307,30 @@ reports it on the repo's line in `pr-watch status` and refuses to `install`.
 `verify` must be one command (a list is refused before the agent runs). Per-branch *state* (enrollment, `pr-session`, `pr-harness`,
 `pr-handled`, ...) and the `pr-tend.repo` registry stay in git config.
 
+**Built-in defaults** are the bottom layer, in one `PRC_DEFAULTS` block in
+`lib/pr-config.sh`: `harness: claude`; settings `remote: origin`,
+`stepTimeout: 1800`, `interval: 300`, `replyPrefix: "🤖 "`, and `verify`,
+`notify`, `botLogin` empty. Lookup is branch file, global file, git config
+`pr-tend.<key>`, default; a `null` in a file skips to the default. Exit 3 now
+only means a key with no value and no default. A missing file is `{}`, so no
+global file is needed to run.
+
+**One library.** `lib/pr-config.sh` holds the resolver; `bin/pr-config` is a
+thin CLI over it and `pr-act` / `pr-watch` source it (no shell-out). Callers
+only call `prc_get` / `prc_setting` and can't tell which layer a value came
+from. The functions never exit and check every step (`|| return`), because
+callers run them as `x=$(prc_...) || die`, where errexit is off; the CLI calls
+them the same way so its tests cover that path.
+
+**Writing values:** `pr-config init --global` creates the global file as a
+skeleton (empty blocks, so git config fallbacks still apply).
+`pr-config set [--global | --branch <b>] [--json] <path> <value>` writes one
+value at a dotted path (`harnesses.claude.model`, `steps.address.harness`,
+`settings.verify`), to the current branch's file by default. Values are strings
+unless `--json` (numbers, lists, `null` to clear an inherited key).
+`pr-config unset <path>` removes a key so it inherits again. `set` on a branch
+with no file creates one holding only that key.
+
 **Init is a copy.** Starting (or enrolling) a branch copies the global file to
 the branch-local one. Per-PR differences are overrides written into that copy by
 commands, because they're common: some PRs are cheap and easy, others thorough
@@ -608,13 +632,15 @@ prompts, exit codes) so the watcher can call them unchanged.
 
 ## `pr-act address` — built 2026-10-12
 
-`pr-act address [--force] [--dry-run] [--harness claude|pi] [<branch>]`:
+`pr-act address [--force] [--no-publish] [--harness claude|pi] [<branch>]`:
 
 1. Find the worktree that has the branch checked out (refuse if none or
    dirty), fetch, run `pr-state --json`.
 2. Gate. Hard (never forced): no PR, PR not open, GitHub unreadable. Soft
-   (`--force`): taken over, behind / conflicting parent, unpushed, remote
-   behind or diverged. Warn: CI still running. Nothing owed → exit 0.
+   (`--force`): taken over, a restack that would conflict, sync unknown,
+   unpushed, remote behind or diverged. Warn: CI still running, behind the
+   target (a busy repo's branch is never caught up, so behind alone never
+   blocks; [req-review #10](req-review.md)). Nothing owed → exit 0.
 3. Fetch the owed bot items' text with one `nodes(ids:)` query; normalize to
    `{id, type, path, line, outdated, conversation}`.
 4. Agent step: resume `branch.<b>.pr-session` or mint one (stored with
@@ -625,7 +651,7 @@ prompts, exit codes) so the watcher can call them unchanged.
    pi: `--tools read,edit,write`, result parsed from a final ```json block.
 5. Pipeline commits the edits (`gave-up` → nothing committed or posted), runs
    `pr-tend.verify` (fail → commit kept, nothing pushed), prints the plan.
-   `--dry-run` stops here.
+   `--no-publish` stops here; the agent has already run.
 6. Push, then: threads get a reply (prefix `pr-tend.replyPrefix`, default
    "🤖 "); fixed / reply resolve it, pushback stays open. Review bodies and PR
    comments get one combined PR comment and are added to
@@ -637,7 +663,7 @@ prompts, exit codes) so the watcher can call them unchanged.
 could steer edits that `pr-tend.verify` then runs and the push publishes, so
 such threads go to "needs chrismo" untouched. The agent never runs shell
 commands beyond read-only git (Claude) or none at all (pi); `verify` runs repo
-code on agent edits, unsandboxed — `--dry-run` lets chrismo look first.
+code on agent edits, unsandboxed — `--no-publish` lets chrismo look first.
 
 Not in v1: local review before the push, cycle cap, bot re-trigger, the
 `accepted` pin, lease / lock. `pr-tend.botIgnore` (multi-valued) keeps bots
@@ -745,6 +771,9 @@ short-lived, so it can't own children like their daemons do. Plan:
   lives so far; XDG is used only for watcher state (`~/.local/state/pr-tend`).
   Leaning XDG JSON plus a branch-local copy; see "Config files: XDG global +
   branch-local copy".
+- **Why both `get` and `setting`?** (tabled 2026-10-13) Two verbs, two
+  blocks (`harnesses`/`steps` vs `settings`), two resolvers (SuperDB overlay vs
+  jq lookup). Revisit whether one lookup could serve both.
 - **TODO: SuperDB instead of `jq`?** `pr-state`, `pr-act` and `pr-watch` shell
   out to `jq` (including the `CLASSIFY` filter); other scripts in this repo use
   `super`. Decide whether to move the PR scripts over, or document why not.

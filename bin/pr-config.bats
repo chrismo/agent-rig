@@ -206,10 +206,55 @@ GLOBAL='{"harness":"claude",
   cmp "$PR_TEND_CONFIG" "$(branch_file feat)"
 }
 
-@test "init: no global file writes an empty overlay" {
+@test "init: no global file is refused and points at init --global" {
   run "$PR_CONFIG" init
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"init --global"* ]]
+  [ ! -e "$(branch_file feat)" ]
+}
+
+@test "init --global: writes a skeleton that resolves to the defaults" {
+  export PR_TEND_CONFIG="$TMP/new/dir/config.json"
+  run "$PR_CONFIG" init --global
   [ "$status" -eq 0 ]
-  [ "$(jq -c . "$(branch_file feat)")" = '{}' ]
+  [[ "$output" == *"$PR_TEND_CONFIG"* ]]
+  [ "$(jq -c 'keys' "$PR_TEND_CONFIG")" = '["harness","harnesses","settings","steps"]' ]
+  [ "$(jq -c '.harnesses | keys' "$PR_TEND_CONFIG")" = '["claude","pi"]' ]
+  run "$PR_CONFIG" get address
+  [ "$output" = '{"harness":"claude"}' ]
+}
+
+@test "init --global: the skeleton doesn't shadow git config settings" {
+  "$PR_CONFIG" init --global
+  git config pr-tend.verify "from git"
+  run "$PR_CONFIG" setting verify
+  [ "$output" = "from git" ]
+}
+
+@test "init --global: refuses to overwrite, --force overwrites" {
+  write_global '{"harness":"pi"}'
+  run "$PR_CONFIG" init --global
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"exists"* ]]
+  [ "$(jq -r .harness "$PR_TEND_CONFIG")" = pi ]
+  run "$PR_CONFIG" init --global --force
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .harness "$PR_TEND_CONFIG")" = claude ]
+}
+
+@test "init --global: works outside a repo" {
+  cd "$TMP"
+  run "$PR_CONFIG" init --global
+  [ "$status" -eq 0 ]
+  [ -f "$PR_TEND_CONFIG" ]
+}
+
+@test "--help: every verb is listed" {
+  run "$PR_CONFIG" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"init --global"* ]]
+  [[ "$output" == *"pr-config get"* ]]
+  [[ "$output" == *"pr-config setting"* ]]
 }
 
 @test "init: a missing branch fails" {
@@ -261,11 +306,19 @@ GLOBAL='{"harness":"claude",
   [ "$output" = "make other" ]
 }
 
-@test "setting: null in the branch file unsets it and skips git config" {
-  write_global '{"settings":{"verify":"make test"}}'
-  write_branch feat '{"settings":{"verify":null}}'
-  git config pr-tend.verify "from git"
-  run "$PR_CONFIG" setting verify
+@test "setting: null in the branch file skips git config and takes the built-in default" {
+  write_global '{"settings":{"stepTimeout":900}}'
+  write_branch feat '{"settings":{"stepTimeout":null}}'
+  git config pr-tend.stepTimeout 600
+  run "$PR_CONFIG" setting stepTimeout
+  [ "$status" -eq 0 ]
+  [ "$output" = 1800 ]
+}
+
+@test "setting: null on a key with no default is unset (exit 3)" {
+  write_branch feat '{"settings":{"foo":null}}'
+  git config pr-tend.foo "from git"
+  run "$PR_CONFIG" setting foo
   [ "$status" -eq 3 ]
   [ -z "$output" ]
 }
@@ -291,8 +344,8 @@ GLOBAL='{"harness":"claude",
   [ "$output" = "from file" ]
 }
 
-@test "setting: set nowhere exits 3 (unset) with no output" {
-  run "$PR_CONFIG" setting verify
+@test "setting: a key with no default, set nowhere, exits 3 with no output" {
+  run "$PR_CONFIG" setting foo
   [ "$status" -eq 3 ]
   [ -z "$output" ]
 }
@@ -482,4 +535,223 @@ pin_setup() {
   run "$PR_CONFIG" get build
   [ "$status" -ne 0 ]
   [[ "$output" == *"$PR_TEND_CONFIG"* ]]
+}
+
+# ── set / unset ─────────────────────────────────────────────────────────────
+
+@test "set: writes the current branch's file and get sees it" {
+  write_global "$GLOBAL"
+  run "$PR_CONFIG" set harnesses.claude.model opus
+  [ "$status" -eq 0 ]
+  [ "$(jq -c . "$(branch_file feat)")" = '{"harnesses":{"claude":{"model":"opus"}}}' ]
+  [ "$(get_field build model)" = opus ]
+  [ "$(get_field build effort)" = high ]
+}
+
+@test "set --global: updates the global file and keeps its other keys" {
+  write_global "$GLOBAL"
+  run "$PR_CONFIG" set --global settings.verify "make test"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .settings.verify "$PR_TEND_CONFIG")" = "make test" ]
+  [ "$(jq -r .harnesses.pi.provider "$PR_TEND_CONFIG")" = openrouter ]
+  [ ! -e "$(branch_file feat)" ]
+}
+
+@test "set --global: creates the global file and works outside a repo" {
+  cd "$TMP"
+  run "$PR_CONFIG" set --global settings.interval 120
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .settings.interval "$PR_TEND_CONFIG")" = 120 ]
+}
+
+@test "set --branch: writes that branch's file" {
+  git branch other
+  run "$PR_CONFIG" set --branch other steps.address.harness pi
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .steps.address.harness "$(branch_file other)")" = pi ]
+  [ ! -e "$(branch_file feat)" ]
+}
+
+@test "set: a missing branch fails" {
+  run "$PR_CONFIG" set --branch nope settings.verify x
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no such branch"* ]]
+}
+
+@test "set: values are strings by default, keeping spaces and emoji" {
+  run "$PR_CONFIG" set settings.replyPrefix "🤖 "
+  [ "$(jq -c .settings.replyPrefix "$(branch_file feat)")" = '"🤖 "' ]
+  run "$PR_CONFIG" set settings.stepTimeout 900
+  [ "$(jq -c .settings.stepTimeout "$(branch_file feat)")" = '"900"' ]
+}
+
+@test "set --json: numbers, lists and null" {
+  "$PR_CONFIG" set --json settings.stepTimeout 900
+  "$PR_CONFIG" set --json settings.botLogin '["a","b"]'
+  "$PR_CONFIG" set --json steps.address.pi.effort null
+  [ "$(jq -c . "$(branch_file feat)")" = '{"settings":{"stepTimeout":900,"botLogin":["a","b"]},"steps":{"address":{"pi":{"effort":null}}}}' ]
+}
+
+@test "set --json: invalid JSON is refused and the file is untouched" {
+  write_branch feat '{"harness":"pi"}'
+  run "$PR_CONFIG" set --json settings.botLogin '[a'
+  [ "$status" -ne 0 ]
+  [ "$(jq -c . "$(branch_file feat)")" = '{"harness":"pi"}' ]
+}
+
+@test "set: a null set this way clears the inherited value" {
+  write_global "$GLOBAL"
+  "$PR_CONFIG" set --json harnesses.claude.effort null
+  run "$PR_CONFIG" get build
+  [ "$(jq 'has("effort")' <<<"$output")" = false ]
+}
+
+@test "set: a path that isn't plain dotted names is refused" {
+  for p in 'a..b' '.a' 'a.' 'a b' 'a.$x' '' 'a[0]'; do
+    run "$PR_CONFIG" set "$p" v
+    [ "$status" -ne 0 ] || { echo "accepted: [$p]"; false; }
+  done
+  [ ! -e "$(branch_file feat)" ]
+}
+
+@test "set: through a value that isn't an object is refused, file untouched" {
+  write_branch feat '{"settings":{"verify":"make"}}'
+  run "$PR_CONFIG" set settings.verify.x y
+  [ "$status" -ne 0 ]
+  [ "$(jq -c . "$(branch_file feat)")" = '{"settings":{"verify":"make"}}' ]
+}
+
+@test "set: a malformed file is refused, not overwritten" {
+  mkdir -p "$(dirname "$(branch_file feat)")"
+  printf '{not json\n' > "$(branch_file feat)"
+  run "$PR_CONFIG" set settings.verify x
+  [ "$status" -ne 0 ]
+  [ "$(cat "$(branch_file feat)")" = '{not json' ]
+}
+
+@test "set: needs a path and a value" {
+  run "$PR_CONFIG" set settings.verify
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Usage"* ]]
+}
+
+@test "unset: removes the key so it inherits again" {
+  write_global "$GLOBAL"
+  write_branch feat '{"harnesses":{"claude":{"model":"opus","effort":"low"}}}'
+  run "$PR_CONFIG" unset harnesses.claude.model
+  [ "$status" -eq 0 ]
+  [ "$(jq -c . "$(branch_file feat)")" = '{"harnesses":{"claude":{"effort":"low"}}}' ]
+  [ "$(get_field build model)" = strong ]
+}
+
+@test "unset --global: removes from the global file" {
+  write_global "$GLOBAL"
+  run "$PR_CONFIG" unset --global steps.review
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '.steps | keys' "$PR_TEND_CONFIG")" = '["address"]' ]
+}
+
+@test "unset: a key that isn't there is fine" {
+  write_branch feat '{}'
+  run "$PR_CONFIG" unset settings.verify
+  [ "$status" -eq 0 ]
+}
+
+@test "--help: set and unset are listed" {
+  run "$PR_CONFIG" --help
+  [[ "$output" == *"pr-config set"* ]]
+  [[ "$output" == *"pr-config unset"* ]]
+}
+
+@test "set --json: false and true are values" {
+  "$PR_CONFIG" set --json settings.autofix false
+  "$PR_CONFIG" set --json settings.other true
+  [ "$(jq -c .settings "$(branch_file feat)")" = '{"autofix":false,"other":true}' ]
+}
+
+# ── built-in defaults ───────────────────────────────────────────────────────
+
+@test "defaults: every pipeline setting has one when nothing is set" {
+  [ "$("$PR_CONFIG" setting remote)" = origin ]
+  [ "$("$PR_CONFIG" setting stepTimeout)" = 1800 ]
+  [ "$("$PR_CONFIG" setting interval)" = 300 ]
+  out=$("$PR_CONFIG" setting replyPrefix; echo x)
+  [ "$out" = $'🤖 \nx' ]
+}
+
+@test "defaults: verify, notify and botLogin default to nothing, exit 0" {
+  for k in verify notify botLogin; do
+    run "$PR_CONFIG" setting "$k"
+    [ "$status" -eq 0 ] || { echo "$k: $status"; false; }
+    [ -z "$output" ]
+  done
+}
+
+@test "defaults: git config still beats the built-in default" {
+  git config pr-tend.remote upstream
+  [ "$("$PR_CONFIG" setting remote)" = upstream ]
+}
+
+@test "defaults: an empty list in a file is a value, not unset" {
+  write_branch feat '{"settings":{"botLogin":[]}}'
+  git config pr-tend.botLogin marge
+  run "$PR_CONFIG" setting botLogin
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "defaults: get's harness default is claude" {
+  run "$PR_CONFIG" get address
+  [ "$output" = '{"harness":"claude"}' ]
+}
+
+# ── lib/pr-config.sh: sourced by pr-act and pr-watch ────────────────────────
+
+# Callers use `x=$(prc_... ) || die`, where bash turns errexit off inside the
+# function, so every failure has to come back as a status.
+@test "lib: errors come back as status 1 with errexit off" {
+  source "$BATS_TEST_DIRNAME/../lib/pr-config.sh"
+  set +e
+  printf '{not json\n' > "$PR_TEND_CONFIG"
+  out=$(prc_setting verify feat false); [ $? -eq 1 ]
+  out=$(prc_get build feat ""); [ $? -eq 1 ]
+  rm "$PR_TEND_CONFIG"
+  cd "$TMP"
+  out=$(prc_get build somebranch ""); [ $? -eq 1 ]
+  out=$(prc_setting 'a.b' "" true); [ $? -eq 1 ]
+}
+
+@test "lib: unset is status 3, a value is status 0" {
+  source "$BATS_TEST_DIRNAME/../lib/pr-config.sh"
+  set +e
+  out=$(prc_setting foo feat false); [ $? -eq 3 ]
+  out=$(prc_setting remote feat false); [ $? -eq 0 ]
+  [ "$out" = origin ]
+}
+
+@test "lib: sourcing it runs nothing and leaves the shell options alone" {
+  run bash -c 'set +e; source "$1"; echo "opts=$-"' _ "$BATS_TEST_DIRNAME/../lib/pr-config.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == opts=* ]]
+  [[ "${output#opts=}" != *e* ]]
+}
+
+@test "get: args fall back to git config pr-tend.<harness>.args" {
+  git config pr-tend.claude.args "--max-turns 3"
+  run "$PR_CONFIG" get build
+  [ "$output" = '{"harness":"claude","args":"--max-turns 3"}' ]
+}
+
+@test "get: args in a file beat git config" {
+  write_branch feat '{"harnesses":{"claude":{"args":"--from-file"}}}'
+  git config pr-tend.claude.args "--from-git"
+  run "$PR_CONFIG" get build
+  [ "$(jq -r .args <<<"$output")" = --from-file ]
+}
+
+@test "get: the git config args are the forced harness's" {
+  git config pr-tend.claude.args "--claude-only"
+  git config pr-tend.pi.args "--pi-only"
+  run "$PR_CONFIG" get --harness pi build
+  [ "$(jq -r .args <<<"$output")" = --pi-only ]
 }

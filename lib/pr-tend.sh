@@ -16,19 +16,6 @@ with_timeout() {
   ' "$@"
 }
 
-# pr_setting <default> [--no-branch] <key> [<branch>]: pr-config's value, or
-# <default> when the key is unset (exit 3). Any other pr-config failure returns 1.
-pr_setting() {
-  local default=$1 out rc=0
-  shift
-  out=$("$PR_CONFIG" setting "$@") || rc=$?
-  case $rc in
-    0) printf '%s\n' "$out" ;;
-    3) printf '%s' "$default" ;;
-    *) return 1 ;;
-  esac
-}
-
 # Claude may read and edit; the pipeline commits, pushes and talks to GitHub.
 HARNESS_CLAUDE_ALLOW="Read,Edit,Write,Grep,Glob,Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git status *)"
 HARNESS_CLAUDE_DENY="Bash(git commit *),Bash(git push *),Bash(gh *)"
@@ -37,8 +24,7 @@ HARNESS_PI_TOOLS="read,edit,write"
 
 # harness_run <harness> <session-id> <new|resume> <timeout> <prompt> <json-schema> [<settings-json>]
 # Runs one headless agent step in $PWD; prints the step's JSON result.
-# settings-json is `pr-config get`'s output: model, effort, provider and args
-# (git config pr-tend.<harness>.args when the config has none).
+# settings-json is prc_get's output: model, effort, provider and args.
 harness_run() {
   local h=$1 sid=$2 mode=$3 timeout=$4 prompt=$5 schema=$6 settings=${7:-'{}'} out
   local model effort provider args
@@ -48,7 +34,6 @@ harness_run() {
   effort=$(jq -r '.effort // empty' <<<"$settings")
   provider=$(jq -r '.provider // empty' <<<"$settings")
   args=$(jq -r '.args // empty' <<<"$settings")
-  [[ -n $args ]] || args=$(git config --get "pr-tend.$h.args" || true)
   read -ra extra <<<"$args"
   case $h in
     claude)
@@ -63,9 +48,11 @@ harness_run() {
     claude)
       local -a sess=(--session-id "$sid")
       [[ $mode == resume ]] && sess=(--resume "$sid")
-      out=$(with_timeout "$timeout" claude -p "${sess[@]}" --output-format json --json-schema "$schema" \
+      # The prompt goes first: --allowedTools and --disallowedTools are variadic
+      # and would swallow a trailing one.
+      out=$(with_timeout "$timeout" claude -p "$prompt" "${sess[@]}" --output-format json --json-schema "$schema" \
               --permission-mode acceptEdits --allowedTools "$HARNESS_CLAUDE_ALLOW" \
-              --disallowedTools "$HARNESS_CLAUDE_DENY" "${typed[@]}" "${extra[@]}" "$prompt" </dev/null) || return
+              --disallowedTools "$HARNESS_CLAUDE_DENY" "${typed[@]}" "${extra[@]}" </dev/null) || return
       jq -ce 'select(.is_error | not) | .structured_output // (.result | fromjson?) // empty | objects' <<<"$out" 2>/dev/null
       ;;
     pi)
