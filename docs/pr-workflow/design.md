@@ -263,9 +263,13 @@ Warn when a step override sets `model` but not `effort` and an `effort` is
 inherited, because level names depend on the model (Sortie's
 `agent.effort.inherited`).
 
-Each adapter maps these keys to its CLI flags. The flag names for `claude` and
-`pi` are **not yet checked**, and `args` stays as the escape hatch (how it
-orders against the typed keys is undecided).
+Each adapter maps these keys to its CLI flags (checked against `--help`,
+2026-10-12): claude `--model`, `--effort`; pi `--provider` (needs `--model`),
+`--model`, `--thinking` for effort. `args` stays as the escape hatch, split on
+whitespace (no argument can contain a space) and appended **after** the typed
+flags and the sandbox flags, so it can also override `--allowedTools`,
+`--disallowedTools` (claude) or `--tools` (pi). Whether a repeated flag's last
+value wins is up to each CLI and untested here.
 
 To verify: whether a resumed session (`pr-session`) accepts a different model
 or effort than it started with; Sortie says a change between attempts doesn't
@@ -289,6 +293,19 @@ Shape (same keys as the git-config draft above):
                "pi": {"provider": "...", "model": "...", "effort": "medium"}},
  "steps": {"address": {"harness": "pi", "pi": {"model": "...", "effort": null}}}}
 ```
+
+**Scalar settings** (`stepTimeout`, `replyPrefix`, `verify`, `botLogin`,
+`remote`, `notify`, `interval`, ...) live in a `settings` block in the same two
+files, read with `pr-config setting <key>`: one line per element for a list,
+exit 3 when unset (1 is always an error, so a broken config never reads as
+"unset"). Branch beats global. A key set to `null` is unset. A key
+absent from both files **falls back to `git config pr-tend.<key>`**, so existing
+setups keep working while values move over; a `null` stops the fallback. Outside
+a repo (the watcher under launchd) only the global file and global git config
+are read (`--no-branch`). `pr-act address` stops on a config error; `pr-watch`
+reports it on the repo's line in `pr-watch status` and refuses to `install`.
+`verify` must be one command (a list is refused before the agent runs). Per-branch *state* (enrollment, `pr-session`, `pr-harness`,
+`pr-handled`, ...) and the `pr-tend.repo` registry stay in git config.
 
 **Init is a copy.** Starting (or enrolling) a branch copies the global file to
 the branch-local one. Per-PR differences are overrides written into that copy by

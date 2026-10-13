@@ -18,6 +18,7 @@ setup() {
   export PR_TEND_STATE_DIR="$TMP/state"
   export STATUS_DIR="$TMP/status"
   export PS_FIXTURES="$TMP/ps"
+  export PR_TEND_CONFIG="$TMP/global.json"
   mkdir -p "$PS_FIXTURES" "$TMP/fakebin"
 
   cat > "$TMP/fakebin/pr-state" <<'EOF'
@@ -419,4 +420,63 @@ EOF
   "$PR_WATCH" install
   plutil -lint "$PLIST"
   [ "$(plutil -extract StandardOutPath raw "$PLIST")" = "$TMP/a&b/launchd.log" ]
+}
+
+# ── settings via pr-config: the global file first, git config as the fallback
+
+write_cfg() { printf '%s\n' "$1" > "$PR_TEND_CONFIG"; }
+
+@test "config: notify from the file beats git config" {
+  git config --global pr-tend.notify "$TMP/fakebin/missing"
+  write_cfg "{\"settings\":{\"notify\":\"$TMP/fakebin/notify\"}}"
+  ps_fixture feat
+  pass
+  [ "$(cat "$PS_FIXTURES/notified")" = "repo feat|ready to merge" ]
+}
+
+@test "config: a branch file in the working directory does not steer the watcher" {
+  write_cfg "{\"settings\":{\"notify\":\"$TMP/fakebin/notify\"}}"
+  mkdir -p "$TMP/repo/.git/pr-tend"
+  printf '{"settings":{"notify":"%s"}}\n' "$TMP/fakebin/missing" > "$TMP/repo/.git/pr-tend/feat.json"
+  ps_fixture feat
+  (cd "$TMP/repo" && "$PR_WATCH")
+  [ "$(cat "$PS_FIXTURES/notified")" = "repo feat|ready to merge" ]
+}
+
+@test "config: remote from the file" {
+  write_cfg '{"settings":{"remote":"nowhere"}}'
+  ps_fixture feat
+  pass
+  grep -q "fetch from nowhere failed" "$PR_TEND_STATE_DIR/last-pass"
+}
+
+@test "config: install reads interval from the file" {
+  setup_launchd
+  write_cfg '{"settings":{"interval":120}}'
+  "$PR_WATCH" install
+  [ "$(plutil -extract StartInterval raw "$PLIST")" = 120 ]
+}
+
+@test "config: a non-numeric interval in the file is refused" {
+  setup_launchd
+  write_cfg '{"settings":{"interval":"5m"}}'
+  run "$PR_WATCH" install
+  [ "$status" -ne 0 ]
+  [ ! -e "$PLIST" ]
+}
+
+@test "config: an unreadable config file is reported for the repo, not silently defaulted" {
+  printf '{not json\n' > "$PR_TEND_CONFIG"
+  ps_fixture feat
+  pass
+  grep -q "repo.*pr-config failed" "$PR_TEND_STATE_DIR/last-pass"
+  [ ! -f "$PS_FIXTURES/calls" ]
+}
+
+@test "config: install refuses when the config file is unreadable" {
+  setup_launchd
+  printf '{not json\n' > "$PR_TEND_CONFIG"
+  run "$PR_WATCH" install
+  [ "$status" -ne 0 ]
+  [ ! -e "$PLIST" ]
 }

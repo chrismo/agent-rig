@@ -18,6 +18,7 @@ setup() {
   export GIT_CONFIG_SYSTEM=/dev/null
   printf '[user]\n\temail = t@example.com\n\tname = Tester\n[init]\n\tdefaultBranch = main\n' > "$GIT_CONFIG_GLOBAL"
   export FX="$TMP/fx"
+  export PR_TEND_CONFIG="$TMP/global.json"
   mkdir -p "$FX" "$TMP/fakebin"
 
   cat > "$TMP/fakebin/pr-state" <<'EOF'
@@ -514,4 +515,158 @@ EOF
   run "$PR_ACT" address --harness pi
   [ "$status" -ne 0 ]
   [[ "$output" == *"pr-session"* ]]
+}
+
+# ── settings via pr-config: the files first, git config as the fallback ─────
+
+write_cfg() { printf '%s\n' "$1" > "$PR_TEND_CONFIG"; }
+
+# has_flag <file> <flag> <value>: <value> is the line right after <flag>.
+has_flag() { awk -v f="$2" -v v="$3" 'p && $0 == v { ok = 1 } { p = ($0 == f) } END { exit !ok }' "$1"; }
+
+@test "config: model and effort from the global file reach claude" {
+  write_cfg '{"harnesses":{"claude":{"model":"opus","effort":"max"}}}'
+  run "$PR_ACT" address
+  [ "$status" -eq 0 ]
+  has_flag "$FX/claude.args" --model opus
+  has_flag "$FX/claude.args" --effort max
+}
+
+@test "config: the step block beats the harness block" {
+  write_cfg '{"harnesses":{"claude":{"model":"opus"}},"steps":{"address":{"claude":{"model":"sonnet"}}}}'
+  run "$PR_ACT" address
+  has_flag "$FX/claude.args" --model sonnet
+  ! has_flag "$FX/claude.args" --model opus
+}
+
+@test "config: the branch file beats the global file" {
+  write_cfg '{"harnesses":{"claude":{"model":"opus"}}}'
+  mkdir -p "$TMP/repo/.git/pr-tend"
+  printf '%s\n' '{"harnesses":{"claude":{"model":"haiku"}}}' > "$TMP/repo/.git/pr-tend/feat.json"
+  run "$PR_ACT" address
+  has_flag "$FX/claude.args" --model haiku
+}
+
+@test "config: a step can pick pi, with provider, model and thinking flags" {
+  write_cfg '{"harnesses":{"pi":{"provider":"openrouter","model":"cheap","effort":"medium"}},
+              "steps":{"address":{"harness":"pi"}}}'
+  run "$PR_ACT" address
+  [ "$status" -eq 0 ]
+  [ ! -f "$FX/claude.args" ]
+  has_flag "$FX/pi.args" --provider openrouter
+  has_flag "$FX/pi.args" --model cheap
+  has_flag "$FX/pi.args" --thinking medium
+  [ "$(git config branch.feat.pr-harness)" = pi ]
+}
+
+@test "config: claude gets no provider flag" {
+  write_cfg '{"harnesses":{"claude":{"provider":"x","model":"opus"}}}'
+  run "$PR_ACT" address
+  ! grep -qx -- --provider "$FX/claude.args"
+}
+
+@test "config: the stored harness beats the configured step harness" {
+  write_cfg '{"steps":{"address":{"harness":"pi"}}}'
+  git config branch.feat.pr-harness claude
+  run "$PR_ACT" address
+  [ -f "$FX/claude.args" ]
+  [ ! -f "$FX/pi.args" ]
+}
+
+@test "config: --harness beats the configured harness and reads that harness's block" {
+  write_cfg '{"harness":"claude","harnesses":{"claude":{"model":"opus"},"pi":{"model":"cheap"}}}'
+  run "$PR_ACT" address --harness pi
+  has_flag "$FX/pi.args" --model cheap
+  [ ! -f "$FX/claude.args" ]
+}
+
+@test "config: args from the file are appended after the typed flags" {
+  write_cfg '{"harnesses":{"claude":{"model":"opus","args":"--max-turns 3"}}}'
+  run "$PR_ACT" address
+  has_flag "$FX/claude.args" --max-turns 3
+  [ "$(grep -n -x -- --model "$FX/claude.args" | cut -d: -f1)" -lt "$(grep -n -x -- --max-turns "$FX/claude.args" | cut -d: -f1)" ]
+}
+
+@test "config: verify from the file beats git config" {
+  git config pr-tend.verify true
+  write_cfg '{"settings":{"verify":"grep -q nope file.txt"}}'
+  run "$PR_ACT" address
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"verify failed"* ]]
+}
+
+@test "config: the branch file's verify beats the global file's" {
+  write_cfg '{"settings":{"verify":"true"}}'
+  mkdir -p "$TMP/repo/.git/pr-tend"
+  printf '%s\n' '{"settings":{"verify":"grep -q nope file.txt"}}' > "$TMP/repo/.git/pr-tend/feat.json"
+  run "$PR_ACT" address
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"verify failed"* ]]
+}
+
+@test "config: stepTimeout from the file kills a hung agent" {
+  write_cfg '{"settings":{"stepTimeout":1}}'
+  cat > "$FX/agent" <<'EOF'
+#!/usr/bin/env bash
+sleep 30
+EOF
+  SECONDS=0
+  run "$PR_ACT" address
+  [ "$status" -ne 0 ]
+  (( SECONDS < 10 )) || false
+}
+
+@test "config: a non-numeric stepTimeout in the file is refused" {
+  write_cfg '{"settings":{"stepTimeout":"5m"}}'
+  run "$PR_ACT" address
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"stepTimeout"* ]]
+  [ ! -f "$FX/claude.args" ]
+}
+
+@test "config: replyPrefix from the file" {
+  write_cfg '{"settings":{"replyPrefix":"BOT: "}}'
+  run "$PR_ACT" address
+  [ "$status" -eq 0 ]
+  gh_call addPullRequestReviewThreadReply | grep -q '"body=BOT: Uppercased it."'
+}
+
+@test "config: botLogin from the file counts those users as safe" {
+  write_cfg '{"settings":{"botLogin":["marge"]}}'
+  jq '.data.nodes[0].comments.nodes += [{author: {__typename: "User", login: "marge"}, body: "yes"}]' \
+    "$FX/nodes.json" > "$FX/n" && mv "$FX/n" "$FX/nodes.json"
+  run "$PR_ACT" address
+  [ "$status" -eq 0 ]
+  grep -q 'yes' "$FX/claude.args"
+}
+
+@test "config: remote from the file" {
+  write_cfg '{"settings":{"remote":"nowhere"}}'
+  run "$PR_ACT" address
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"fetch from nowhere failed"* ]]
+}
+
+@test "config: an unreadable config file stops address before the agent runs" {
+  printf '{not json\n' > "$PR_TEND_CONFIG"
+  before=$(remote_feat)
+  run "$PR_ACT" address
+  [ "$status" -ne 0 ]
+  [ ! -f "$FX/claude.args" ]
+  [ "$(remote_feat)" = "$before" ]
+}
+
+@test "config: a list-valued verify is refused before the agent runs" {
+  write_cfg '{"settings":{"verify":["true","false"]}}'
+  run "$PR_ACT" address
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"single command"* ]]
+  [ ! -f "$FX/claude.args" ]
+}
+
+@test "harness_run: settings that are not a JSON object stop the step" {
+  source "$BATS_TEST_DIRNAME/../lib/pr-tend.sh"
+  run harness_run claude sid new 5 prompt schema 'not json'
+  [ "$status" -ne 0 ]
+  [ ! -f "$FX/claude.args" ]
 }

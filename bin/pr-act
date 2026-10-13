@@ -15,16 +15,19 @@
 #      --dry-run      stop after the local commit: no push, nothing posted
 #      --harness H    claude (default) or pi; stored in branch.<b>.pr-harness
 #
-# Config: pr-tend.remote (origin), pr-tend.verify (shell command, run in the
-#         worktree), pr-tend.stepTimeout (1800 s), pr-tend.replyPrefix ("🤖 "),
-#         pr-tend.<harness>.args (extra CLI args, split on whitespace),
-#         pr-tend.botLogin (users counted as bots), branch.<b>.pr-session.
+# Config: read with pr-config (global and branch files, then git config
+#         pr-tend.<key>): remote (origin), verify (shell command, run in the
+#         worktree), stepTimeout (1800 s), replyPrefix ("🤖 "), botLogin (users
+#         counted as bots); per harness: model, effort, provider (pi), args
+#         (extra CLI args, split on whitespace; git config pr-tend.<harness>.args
+#         still works). Session state: branch.<b>.pr-session, .pr-harness.
 #
 # See docs/pr-workflow/design.md, "Act".
 
 set -euo pipefail
 
 source "$(dirname "$(realpath "$0")")/../lib/pr-tend.sh"
+PR_CONFIG="$(dirname "$(realpath "$0")")/pr-config"
 
 die() { echo "pr-act: $*" >&2; exit 1; }
 help() { sed -n '3,/^$/s/^# \{0,1\}//p' "$0"; }
@@ -139,11 +142,11 @@ report() { # report <plan> <summary>
 }
 
 address() {
-  local b=$branch wt remote state gate line owed nodes findings
+  local b=$branch wt remote state gate line owed nodes findings bots
   wt=$(worktree_for "$b")
   [[ -n $wt ]] || die "$b isn't checked out in any worktree"
   [[ -z $(git -C "$wt" status --porcelain) ]] || die "$wt has uncommitted changes"
-  remote=$(git config --get pr-tend.remote || echo origin)
+  remote=$(pr_setting origin remote "$b") || die "pr-config failed"
   git -C "$wt" fetch --quiet "$remote" || die "fetch from $remote failed"
   state=$(cd "$wt" && pr-state --json "$b") || die "pr-state failed"
 
@@ -169,7 +172,8 @@ address() {
   nodes=$(gql -f query="$NODES_Q" "${id_args[@]}") || die "couldn't fetch the findings' text"
   # Anyone else in a thread is untrusted: their text would steer edits that
   # verify runs and the push publishes.
-  findings=$(jq -c --argjson bots "$({ git config --get-all pr-tend.botLogin || true; } | jq -Rsc 'split("\n") | map(select(. != ""))')" '
+  bots=$(pr_setting "" botLogin "$b") || die "pr-config failed"
+  findings=$(jq -c --argjson bots "$(jq -Rsc 'split("\n") | map(select(. != ""))' <<<"$bots")" '
     def unbot: sub("\\[bot\\]$"; "");
     .data.viewer.login as $me
     | [.data.nodes[] | select(. != null)
@@ -189,10 +193,14 @@ address() {
     return
   fi
 
-  local stored_h sid h mode result outcome plan timeout
+  local stored_h sid h mode result outcome plan timeout cfg forced verify hflag
   stored_h=$(git config --get "branch.$b.pr-harness" || true)
   sid=$(git config --get "branch.$b.pr-session" || true)
-  h=${harness_opt:-${stored_h:-claude}}
+  forced=${harness_opt:-$stored_h}
+  hflag=()
+  [[ -z $forced ]] || hflag=(--harness "$forced")
+  cfg=$("$PR_CONFIG" get "${hflag[@]}" address "$b") || die "pr-config failed"
+  h=$(jq -r .harness <<<"$cfg")
   if [[ -n $sid ]]; then
     [[ $h == "${stored_h:-claude}" ]] \
       || die "branch.$b.pr-session belongs to ${stored_h:-claude}; unset it to start a $h session"
@@ -200,11 +208,13 @@ address() {
   else
     sid=$(uuidgen | tr 'A-F' 'a-f') mode=new
   fi
-  timeout=$(git config --get pr-tend.stepTimeout || echo 1800)
+  timeout=$(pr_setting 1800 stepTimeout "$b") || die "pr-config failed"
   [[ $timeout =~ ^[1-9][0-9]*$ ]] || die "pr-tend.stepTimeout must be whole seconds: $timeout"
+  verify=$(cd "$wt" && pr_setting "" verify "$b") || die "pr-config failed"
+  [[ $verify != *$'\n'* ]] || die "verify must be a single command, not a list"
   echo "pr-act: $h ($mode session $sid) is addressing $(jq length <<<"$findings") item(s) on $b…" >&2
   result=$(cd "$wt" && harness_run "$h" "$sid" "$mode" "$timeout" \
-             "$PROMPT"$'\n\nPR '"$(jq -r '.pr.url' <<<"$state")"$'\nFindings:\n'"$(jq . <<<"$findings")" "$SCHEMA") \
+             "$PROMPT"$'\n\nPR '"$(jq -r '.pr.url' <<<"$state")"$'\nFindings:\n'"$(jq . <<<"$findings")" "$SCHEMA" "$cfg") \
     || die "the $h step failed or returned no usable result (session $sid)"
   git config "branch.$b.pr-session" "$sid"
   git config "branch.$b.pr-harness" "$h"
@@ -225,12 +235,11 @@ address() {
             elif $a.action == "fixed" and ($changed | not) then {action: "ask", reply: "(said fixed but changed nothing): \($a.reply)"}
             else {action: $a.action, reply: $a.reply} end] + $held' <<<"$findings")
 
-  local verify msg
+  local msg
   if $changed; then
     msg=$(jq -r '(.commit_message // "") | if test("\\S") then . else "Address review feedback" end' <<<"$result")
     git -C "$wt" add -A && git -C "$wt" commit -q -m "$msg" || die "commit failed; the edits are left in $wt"
   fi
-  verify=$(git -C "$wt" config --get pr-tend.verify || true)
   if [[ -n $verify ]]; then
     (cd "$wt" && sh -c "$verify") || die "verify failed ($verify); the commit is kept in $wt, nothing pushed or posted"
     [[ -z $(git -C "$wt" status --porcelain) ]] \
@@ -247,7 +256,7 @@ address() {
     git -C "$wt" push --quiet "$remote" "$b" || die "push failed; nothing posted"
   fi
   local prefix id failed=0 pr_id body=""
-  prefix=$(git config --get pr-tend.replyPrefix || echo "🤖 ")
+  prefix=$(pr_setting "🤖 " replyPrefix "$b") || die "pr-config failed"
   while IFS= read -r item; do
     id=$(jq -r .id <<<"$item")
     gql -f query='mutation($thread: ID!, $body: String!) {
