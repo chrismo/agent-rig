@@ -65,11 +65,14 @@ step() { # step <key> <field> <jq-assignment...>
 @test "stale refs: fetch, mechanically" {
   [ "$(step stale who '.fresh = false')" = run ]
   [ "$(step stale cmd '.fresh = false')" = "git fetch --prune origin" ]
+  [ "$(step stale say '.fresh = false')" = "fetch: GitHub is ahead of your remote refs, so the steps below may be wrong" ]
 }
 
 @test "a push that isn't ours: chrismo looks, and no push is suggested" {
   [ "$(keys '.push.remote_ours = false' '.push.behind = 2' '.push.ahead = 1' '.push.diverged = true')" = foreign ]
   [ "$(step foreign cmd '.push.remote_ours = false' '.push.behind = 2')" = "git log HEAD..origin/feat" ]
+  [ "$(step foreign say '.push.remote_ours = false' '.push.behind = 2')" = "origin/feat has 2 commits that aren't yours" ]
+  [ "$(step foreign say '.push.remote_ours = false' '.push.behind = 1')" = "origin/feat has 1 commit that isn't yours" ]
 }
 
 @test "human items: chrismo replies, via the --long list" {

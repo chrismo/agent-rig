@@ -34,9 +34,10 @@ values {...s, remote}
     open and len(errors) > 0
       ? step("errors", "you", f"{plural(len(errors), "error")}: the steps below may be wrong", "pr-state --json") : null,
     open and on(fresh == false)
-      ? step("stale", "run", "fetch: GitHub is ahead of your remote refs", f"git fetch --prune {remote}") : null,
+      ? step("stale", "run", "fetch: GitHub is ahead of your remote refs, so the steps below may be wrong",
+           f"git fetch --prune {remote}") : null,
     open and foreign
-      ? step("foreign", "you", f"{remote}/{branch} has {plural(push.behind, "commit")} that aren'"'"'t yours",
+      ? step("foreign", "you", f"{remote}/{branch} has {plural(push.behind, "commit")} that {push.behind == 1 ? "isn'"'"'t" : "aren'"'"'t"} yours",
              f"git log HEAD..{remote}/{branch}") : null,
     open and n(threads.owed_human) > 0
       ? step("human", "you", f"reply to {plural(threads.owed_human, "human item")}", "pr-state --long") : null,
@@ -54,7 +55,7 @@ values {...s, remote}
       ? (push.remote_sha is null ? step("push", "run", f"push: not on {remote} yet", f"git push -u {remote} {branch}")
          : on(push.diverged) ? step("push", "run", f"force-push {plural(push.ahead, "commit")} (rewritten)", "git push --force-with-lease")
          : step("push", "run", f"push {plural(push.ahead, "commit")}", "git push")) : null,
-    pr is null and threads.blocking is not null ? step("open-pr", "you", "open a PR", "gh pr create") : null,
+    pr is null and len(errors) == 0 ? step("open-pr", "you", "open a PR", "gh pr create") : null,
     has_pr and on(pr.draft) ? step("draft", "you", "mark the PR ready for review", "gh pr ready") : null,
     open and need_review ? step("review", "agent", "review the changes since the last review", null) : null,
     has_pr and on(ci.verdict == "inconclusive") ? step("ci-rerun", "run", "rerun cancelled CI", "gh pr checks") : null,
