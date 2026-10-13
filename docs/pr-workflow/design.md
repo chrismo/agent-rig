@@ -260,9 +260,10 @@ Resolution, per key:
 The harness command and timeouts can't be overridden per step;
 `settings.stepTimeout` is global.
 
-Warn when a step override sets `model` but not `effort` and an `effort` is
-inherited, because level names depend on the model (Sortie's
-`agent.effort.inherited`).
+**Not built:** warn when a step override sets `model` but not `effort` and an
+`effort` is inherited, because level names depend on the model (Sortie's
+`agent.effort.inherited`). Today nothing warns; the typed files only check that
+`effort` is one of the harness CLI's levels.
 
 Each adapter maps these keys to its CLI flags (checked against `--help`,
 2026-10-12): claude `--model`, `--effort`; pi `--provider` (needs `--model`),
@@ -628,7 +629,9 @@ not built; a pass only observes and reports:
   - **`!`:** unresolved threads, a bot review in state `CHANGES_REQUESTED`, and
     a person's latest `APPROVED` / `CHANGES_REQUESTED` / `DISMISSED` review
     when it requests changes. A later `COMMENTED` review doesn't clear it,
-    matching GitHub.
+    matching GitHub. Verdicts come from `reviews(last: 50)` only, so on a PR
+    with more than 50 reviews an older request for changes can drop out of
+    view and stop blocking (limit, not handled).
   - **`i`:** bot review bodies and PR comments not yet in `pr-handled`.
   - **Why the split:** those have no "resolved" state, so they were counted as
     owed alongside real work. The verdict a review bot writes in prose (Merge
@@ -878,7 +881,10 @@ short-lived, so it can't own children like their daemons do. Plan:
 - **TODO: move `pr-state`, `pr-act` and `pr-watch` from `jq` to SuperDB.**
   Decided 2026-10-13: SuperDB, always. `pr-config` is done. The rest still shell
   out to `jq`, including the `CLASSIFY` filter and the GraphQL shaping. Not part
-  of the restack work.
+  of the restack work. **Caution:** super 0.3.0 panicked intermittently on one
+  construct (`unnest … into`, 12 of 200 runs), and these filters run unattended
+  every pass. Stress-test each converted filter (~200 runs, identical output)
+  before trusting it, as was done for the config merge and type check.
 
 ## Prior art — summary
 
