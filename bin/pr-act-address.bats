@@ -19,6 +19,7 @@ setup() {
   printf '[user]\n\temail = t@example.com\n\tname = Tester\n[init]\n\tdefaultBranch = main\n' > "$GIT_CONFIG_GLOBAL"
   export FX="$TMP/fx"
   export PR_TEND_CONFIG="$TMP/global.json"
+  PR_CONFIG="$BATS_TEST_DIRNAME/pr-config"
   mkdir -p "$FX" "$TMP/fakebin"
 
   cat > "$TMP/fakebin/pr-state" <<'EOF'
@@ -311,8 +312,8 @@ remote_feat() { git -C "$TMP/origin.git" rev-parse feat; }
   grep -q 'Bash(git commit' "$FX/claude.args"
 }
 
-@test "extra harness args from pr-tend.<harness>.args" {
-  git config pr-tend.claude.args "--model sonnet"
+@test "extra harness args from harnesses.<harness>.args" {
+  "$PR_CONFIG" set --global harnesses.claude.args "--model sonnet"
   run "$PR_ACT" address
   grep -qx -- --model "$FX/claude.args" || false
   grep -qx -- sonnet "$FX/claude.args"
@@ -394,8 +395,8 @@ remote_feat() { git -C "$TMP/origin.git" rev-parse feat; }
   [[ "$output" == *"needs chrismo"*"file.txt:3"*"stranger"* ]]
 }
 
-@test "the viewer's own replies and pr-tend.botLogin users count as safe" {
-  git config --global pr-tend.botLogin marge
+@test "the viewer's own replies and settings.botLogin users count as safe" {
+  "$PR_CONFIG" set --global --json settings.botLogin '["marge"]'
   jq '.data.nodes[0].comments.nodes += [{author: {__typename: "User", login: "me"}, body: "hm?"},
                                          {author: {__typename: "User", login: "marge"}, body: "yes"}]' \
     "$FX/nodes.json" > "$FX/n" && mv "$FX/n" "$FX/nodes.json"
@@ -418,7 +419,7 @@ remote_feat() { git -C "$TMP/origin.git" rev-parse feat; }
 }
 
 @test "verify failing: commit kept, nothing pushed or posted" {
-  git config pr-tend.verify "grep -q nope file.txt"
+  "$PR_CONFIG" set --global settings.verify "grep -q nope file.txt"
   before=$(remote_feat)
   run "$PR_ACT" address
   [ "$status" -ne 0 ]
@@ -428,7 +429,7 @@ remote_feat() { git -C "$TMP/origin.git" rev-parse feat; }
 }
 
 @test "verify passing lets it ship" {
-  git config pr-tend.verify "grep -q THREE file.txt"
+  "$PR_CONFIG" set --global settings.verify "grep -q THREE file.txt"
   run "$PR_ACT" address
   [ "$status" -eq 0 ]
   [ "$(remote_feat)" = "$(git rev-parse HEAD)" ]
@@ -454,8 +455,8 @@ EOF
   [ "$(gh_ops)" = "nodes" ]
 }
 
-@test "a hung agent is killed at pr-tend.stepTimeout" {
-  git config pr-tend.stepTimeout 1
+@test "a hung agent is killed at settings.stepTimeout" {
+  "$PR_CONFIG" set --global --json settings.stepTimeout 1
   cat > "$FX/agent" <<'EOF'
 #!/usr/bin/env bash
 sleep 30
@@ -490,8 +491,8 @@ EOF
   [[ "$output" == *"sync"*"unknown"* ]]
 }
 
-@test "a non-numeric pr-tend.stepTimeout is refused" {
-  git config pr-tend.stepTimeout 5m
+@test "a non-numeric settings.stepTimeout is refused" {
+  "$PR_CONFIG" set --global settings.stepTimeout 5m
   run "$PR_ACT" address
   [ "$status" -ne 0 ]
   [[ "$output" == *"stepTimeout"* ]] || false
@@ -530,7 +531,7 @@ EOF
 }
 
 @test "verify leaving the tree dirty stops before the push" {
-  git config pr-tend.verify "echo formatted >> file.txt"
+  "$PR_CONFIG" set --global settings.verify "echo formatted >> file.txt"
   before=$(remote_feat)
   run "$PR_ACT" address
   [ "$status" -ne 0 ]
@@ -566,7 +567,7 @@ EOF
   [[ "$output" == *"pr-session"* ]]
 }
 
-# ── settings via pr-config: the files first, git config as the fallback ─────
+# ── settings via pr-config: branch file over global file over defaults ─────
 
 write_cfg() { printf '%s\n' "$1" > "$PR_TEND_CONFIG"; }
 
@@ -636,12 +637,11 @@ has_flag() { awk -v f="$2" -v v="$3" 'p && $0 == v { ok = 1 } { p = ($0 == f) } 
   [ "$(grep -n -x -- --model "$FX/claude.args" | cut -d: -f1)" -lt "$(grep -n -x -- --max-turns "$FX/claude.args" | cut -d: -f1)" ]
 }
 
-@test "config: verify from the file beats git config" {
-  git config pr-tend.verify true
-  write_cfg '{"settings":{"verify":"grep -q nope file.txt"}}'
+@test "config: git config pr-tend.verify is not read" {
+  git config pr-tend.verify "grep -q nope file.txt"
   run "$PR_ACT" address
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"verify failed"* ]]
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"verify failed"* ]]
 }
 
 @test "config: the branch file's verify beats the global file's" {

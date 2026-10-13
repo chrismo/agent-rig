@@ -15,6 +15,7 @@ setup() {
   export GIT_CONFIG_GLOBAL="$TMP/gitconfig-global"
   export GIT_CONFIG_SYSTEM=/dev/null
   export PR_TEND_CONFIG="$TMP/global.json"
+  PR_CONFIG="$BATS_TEST_DIRNAME/pr-config"
   printf '[user]\n\temail = t@example.com\n\tname = Tester\n[init]\n\tdefaultBranch = main\n' > "$GIT_CONFIG_GLOBAL"
 
   export GH_FIXTURES="$TMP/gh"
@@ -500,7 +501,7 @@ three" "$TMP/other" && git -C "$TMP/other" push -q origin main 2>/dev/null
 
 @test "threads: unresolved and last word not ours are owed, split bot vs human" {
   git switch -qc feat && commit a.txt a
-  git config pr-tend.botLogin marge
+  "$PR_CONFIG" set --global --json settings.botLogin '["marge"]'
   pr_fixture feat ".reviewThreads.nodes = [
     $(thread Bot copilot Bot copilot),
     $(thread User marge User marge),
@@ -580,10 +581,9 @@ note() { # note <id> <type> <login> [body] — a review or top-level comment nod
   [ "$(field .threads.by_type)" = null ]
 }
 
-@test "threads: pr-tend.botLogin takes several logins, with or without [bot]" {
+@test "threads: settings.botLogin takes several logins, with or without [bot]" {
   git switch -qc feat && commit a.txt a
-  git config --add pr-tend.botLogin marge
-  git config --add pr-tend.botLogin homer[bot]
+  "$PR_CONFIG" set --global --json settings.botLogin '["marge", "homer[bot]"]'
   pr_fixture feat ".reviewThreads.nodes = [$(thread User marge User marge), $(thread User homer User homer)]" \
     ".reviews.nodes = [$(note R1 User 'marge[bot]')]" \
     ".comments.nodes = [$(note C1 User homer), $(note C2 User alice)]"
@@ -592,10 +592,9 @@ note() { # note <id> <type> <login> [body] — a review or top-level comment nod
   [ "$(field .threads.owed_human)" = 0 ]
 }
 
-@test "threads: bots in pr-tend.botIgnore are never owed" {
+@test "threads: bots in settings.botIgnore are never owed" {
   git switch -qc feat && commit a.txt a
-  git config --add pr-tend.botIgnore github-actions
-  git config --add pr-tend.botIgnore 'vercel[bot]'
+  "$PR_CONFIG" set --global --json settings.botIgnore '["github-actions", "vercel[bot]"]'
   pr_fixture feat ".reviewThreads.nodes = [$(thread Bot github-actions Bot github-actions), $(thread Bot copilot Bot copilot)]" \
     ".reviews.nodes = [$(note R1 Bot vercel)]" \
     ".comments.nodes = [$(note C1 Bot 'github-actions[bot]'), $(note C2 Bot copilot)]"
@@ -604,7 +603,24 @@ note() { # note <id> <type> <login> [body] — a review or top-level comment nod
   [ "$(field '[.threads.items[].last] | join(",")')" = "copilot,copilot" ]
 }
 
-@test "threads: botLogin and botIgnore come from the config file too" {
+@test "threads: git config pr-tend.botLogin is not read" {
+  git switch -qc feat && commit a.txt a
+  git config pr-tend.botLogin marge
+  pr_fixture feat ".reviews.nodes = [$(note R1 User marge)]"
+  state
+  [ "$(field .threads.owed_bot)" = 0 ]
+}
+
+@test "threads: botLogin and botIgnore come from the branch file too" {
+  git switch -qc feat && commit a.txt a
+  mkdir -p .git/pr-tend
+  echo '{"settings": {"botLogin": ["marge"]}}' > .git/pr-tend/feat.json
+  pr_fixture feat ".reviews.nodes = [$(note R1 User marge)]"
+  state
+  [ "$(field .threads.owed_bot)" = 1 ]
+}
+
+@test "threads: botLogin and botIgnore come from the config file" {
   git switch -qc feat && commit a.txt a
   echo '{"settings": {"botLogin": ["marge"], "botIgnore": ["vercel"]}}' > "$PR_TEND_CONFIG"
   pr_fixture feat ".reviews.nodes = [$(note R1 User marge), $(note R2 Bot vercel)]"

@@ -5,10 +5,10 @@
 # Usage:
 #   pr-config init --global [--force]            create the global file
 #   pr-config init [--force] [<branch>]          copy the global file to <branch>
-#   pr-config get [--harness <h>] <step> [<branch>]
+#   pr-config get [--no-branch] [--json] <path> [<branch>]
+#                                                one value; exit 3 when unset
+#   pr-config step [--harness <h>] <step> [<branch>]
 #                                                what <step> runs with, as JSON
-#   pr-config setting [--no-branch] <key> [<branch>]
-#                                                one setting; exit 3 when unset
 #   pr-config set [--global | --branch <b>] [--json] <path> <value>
 #                                                write one value
 #   pr-config unset [--global | --branch <b>] <path>
@@ -18,15 +18,18 @@
 #   global  $PR_TEND_CONFIG, else ~/.config/pr-tend/config.json ($XDG_CONFIG_HOME)
 #   branch  <git common dir>/pr-tend/<branch>.json, shared by all worktrees
 #
-# Lookup: branch file, then global file, then git config pr-tend.<key>, then
-# the built-in default (remote origin, stepTimeout 1800, interval 300,
-# replyPrefix "🤖 "; verify, notify, botLogin, botIgnore and botIgnoreBody
-# empty). null in a file skips to the default. <branch> defaults to the current one; --no-branch skips the
-# branch file. --harness reads that harness's blocks instead of the configured
-# one. A list setting prints one element per line. Exit 1 is always an error.
-# set/unset write the current branch's file unless --global or --branch; <path>
-# is dotted, e.g. harnesses.claude.model, steps.address.harness, settings.verify.
-# Values are strings; --json takes a number, list, object or null.
+# The branch file is merged over the global file, and both over the built-in
+# defaults (harness claude; settings remote origin, stepTimeout 1800, interval
+# 300, replyPrefix "🤖 "; verify, notify, botLogin, botIgnore and botIgnoreBody
+# empty). null in a file removes the key from the files; a default still
+# applies. <path> is dotted, e.g. settings.verify, harnesses.claude.model,
+# steps.address.harness. <branch> defaults to the current one; --no-branch
+# skips the branch file. get prints a string raw, a list one element per line
+# and an object as JSON; --json prints JSON for all of them. step merges the
+# step's block for its harness over that harness's block; --harness picks the
+# harness instead. Exit 1 is always an error. set/unset write the current
+# branch's file unless --global or --branch. Values are strings; --json takes a
+# number, list, object or null.
 # See docs/pr-workflow/design.md, "Config files".
 
 set -euo pipefail
@@ -44,17 +47,22 @@ verb=$1; shift
 case $verb in
   -h|--help) help ;;
   get)
+    nobranch=false json=
+    while [[ ${1:-} == --* ]]; do
+      case $1 in
+        --no-branch) nobranch=true ;;
+        --json) json=json ;;
+        *) die "unknown option: $1" ;;
+      esac
+      shift
+    done
+    (( $# )) || usage
+    prc_get "$1" "${2:-}" "$nobranch" $json || exit $? ;;
+  step)
     forced=
     if [[ ${1:-} == --harness ]]; then (( $# >= 2 )) || usage; forced=$2; shift 2; fi
     (( $# )) || usage
-    step=$1
-    branch=$(prc_branch_arg "${2:-}") || exit $?
-    prc_get "$step" "$branch" "$forced" || exit $? ;;
-  setting)
-    nobranch=false
-    if [[ ${1:-} == --no-branch ]]; then nobranch=true; shift; fi
-    (( $# )) || usage
-    prc_setting "$1" "${2:-}" "$nobranch" || exit $? ;;
+    prc_step "$1" "${2:-}" "$forced" || exit $? ;;
   init)
     force=false global=false
     while [[ ${1:-} == --* ]]; do

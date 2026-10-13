@@ -19,6 +19,7 @@ setup() {
   export STATUS_DIR="$TMP/status"
   export PS_FIXTURES="$TMP/ps"
   export PR_TEND_CONFIG="$TMP/global.json"
+  PR_CONFIG="$BATS_TEST_DIRNAME/pr-config"
   mkdir -p "$PS_FIXTURES" "$TMP/fakebin"
 
   cat > "$TMP/fakebin/pr-state" <<'EOF'
@@ -35,7 +36,8 @@ printf '%s|%s\n' "$1" "$2" >> "$PS_FIXTURES/notified"
 EOF
   chmod +x "$TMP/fakebin/pr-state" "$TMP/fakebin/notify"
   export PATH="$TMP/fakebin:$PATH"
-  git config --global pr-tend.notify "$TMP/fakebin/notify"
+  # Never the real macOS notifier: every config a test writes keeps this one.
+  "$PR_CONFIG" set --global settings.notify "$TMP/fakebin/notify"
 
   git init -q --bare "$TMP/origin.git"
   git clone -q "$TMP/origin.git" "$TMP/repo" 2>/dev/null
@@ -342,7 +344,7 @@ SH
 @test "notify: a configured command with a space in its path works" {
   mkdir -p "$TMP/my tools"
   cp "$TMP/fakebin/notify" "$TMP/my tools/notify"
-  git config --global pr-tend.notify "'$TMP/my tools/notify'"
+  "$PR_CONFIG" set --global settings.notify "'$TMP/my tools/notify'"
   ps_fixture feat
   pass
   [ "$(notified)" = "repo feat|ready to merge" ]
@@ -387,13 +389,6 @@ EOF
   grep -q "bootstrap gui/$(id -u) $PLIST" "$PS_FIXTURES/launchctl"
 }
 
-@test "install: interval comes from pr-tend.interval" {
-  setup_launchd
-  git config --global pr-tend.interval 120
-  "$PR_WATCH" install
-  [ "$(plutil -extract StartInterval raw "$PLIST")" = 120 ]
-}
-
 @test "uninstall: boots out and removes the plist" {
   setup_launchd
   "$PR_WATCH" install
@@ -407,7 +402,7 @@ EOF
   setup_launchd
   "$PR_WATCH" install
   : > "$PS_FIXTURES/launchctl"
-  git config --global pr-tend.interval 5m
+  "$PR_CONFIG" set --global settings.interval 5m
   run "$PR_WATCH" install
   [ "$status" -ne 0 ]
   [ "$(plutil -extract StartInterval raw "$PLIST")" = 300 ]
@@ -422,13 +417,15 @@ EOF
   [ "$(plutil -extract StandardOutPath raw "$PLIST")" = "$TMP/a&b/launchd.log" ]
 }
 
-# ── settings via pr-config: the global file first, git config as the fallback
+# ── settings via pr-config: the global file over the defaults ───────────────
 
-write_cfg() { printf '%s\n' "$1" > "$PR_TEND_CONFIG"; }
+write_cfg() {
+  printf '%s\n' "$1" > "$PR_TEND_CONFIG"
+  [[ $1 == *notify* ]] || "$PR_CONFIG" set --global settings.notify "$TMP/fakebin/notify"
+}
 
-@test "config: notify from the file beats git config" {
+@test "config: git config pr-tend.notify is not read" {
   git config --global pr-tend.notify "$TMP/fakebin/missing"
-  write_cfg "{\"settings\":{\"notify\":\"$TMP/fakebin/notify\"}}"
   ps_fixture feat
   pass
   [ "$(cat "$PS_FIXTURES/notified")" = "repo feat|ready to merge" ]

@@ -24,7 +24,7 @@ HARNESS_PI_TOOLS="read,edit,write"
 
 # harness_run <harness> <session-id> <new|resume> <timeout> <prompt> <json-schema> [<settings-json>]
 # Runs one headless agent step in $PWD; prints the step's JSON result.
-# settings-json is prc_get's output: model, effort, provider and args.
+# settings-json is prc_step's output: model, effort, provider and args.
 harness_run() {
   local h=$1 sid=$2 mode=$3 timeout=$4 prompt=$5 schema=$6 settings=${7:-'{}'} out
   local model effort provider args

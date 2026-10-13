@@ -9,20 +9,19 @@
 #   unenroll   clear the mark
 #   address    hand the PR's owed bot feedback (threads, review bodies, PR
 #              comments) to an agent, then commit its edits, run
-#              pr-tend.verify, push, reply, and resolve what it fixed
+#              settings.verify, push, reply, and resolve what it fixed
 #              or answered. Items it marks "ask" are left for chrismo.
 #      --force        run even if the branch is unpushed, diverged or taken over
 #      --no-publish   stop after the local commit: no push, nothing posted.
 #                     The agent still runs, so this spends tokens.
 #      --harness H    claude (default) or pi; stored in branch.<b>.pr-harness
 #
-# Config: read with lib/pr-config.sh (branch and global files, git config
-#         pr-tend.<key>, then built-in defaults): remote (origin), verify
-#         (shell command, run in the worktree), stepTimeout (1800 s),
-#         replyPrefix ("🤖 "), botLogin (users counted as bots); per harness:
+# Config: read with lib/pr-config.sh (branch file over global file over
+#         built-in defaults; see pr-config --help). settings: remote (origin),
+#         verify (shell command, run in the worktree), stepTimeout (1800 s),
+#         replyPrefix ("🤖 "), botLogin (users counted as bots). Per harness:
 #         model, effort, provider (pi), args (extra CLI args, split on
-#         whitespace; git config pr-tend.<harness>.args still works).
-#         Session state: branch.<b>.pr-session, .pr-harness.
+#         whitespace). Session state: branch.<b>.pr-session, .pr-harness.
 #
 # See docs/pr-workflow/design.md, "Act".
 
@@ -148,7 +147,7 @@ address() {
   wt=$(worktree_for "$b")
   [[ -n $wt ]] || die "$b isn't checked out in any worktree"
   [[ -z $(git -C "$wt" status --porcelain) ]] || die "$wt has uncommitted changes"
-  remote=$(prc_setting remote "$b" false) || die "pr-config failed"
+  remote=$(prc_get settings.remote "$b" false) || die "pr-config failed"
   git -C "$wt" fetch --quiet "$remote" || die "fetch from $remote failed"
   state=$(cd "$wt" && pr-state --json "$b") || die "pr-state failed"
 
@@ -174,8 +173,8 @@ address() {
   nodes=$(gql -f query="$NODES_Q" "${id_args[@]}") || die "couldn't fetch the findings' text"
   # Anyone else in a thread is untrusted: their text would steer edits that
   # verify runs and the push publishes.
-  bots=$(prc_setting botLogin "$b" false) || die "pr-config failed"
-  findings=$(jq -c --argjson bots "$(jq -Rsc 'split("\n") | map(select(. != ""))' <<<"$bots")" '
+  bots=$(prc_get settings.botLogin "$b" false json) || die "pr-config failed"
+  findings=$(jq -c --argjson bots "$bots" '
     def unbot: sub("\\[bot\\]$"; "");
     .data.viewer.login as $me
     | [.data.nodes[] | select(. != null)
@@ -199,7 +198,7 @@ address() {
   stored_h=$(git config --get "branch.$b.pr-harness" || true)
   sid=$(git config --get "branch.$b.pr-session" || true)
   forced=${harness_opt:-$stored_h}
-  cfg=$(prc_get address "$b" "$forced") || die "pr-config failed"
+  cfg=$(prc_step address "$b" "$forced") || die "pr-config failed"
   h=$(jq -r .harness <<<"$cfg")
   if [[ -n $sid ]]; then
     [[ $h == "${stored_h:-claude}" ]] \
@@ -208,9 +207,9 @@ address() {
   else
     sid=$(uuidgen | tr 'A-F' 'a-f') mode=new
   fi
-  timeout=$(prc_setting stepTimeout "$b" false) || die "pr-config failed"
-  [[ $timeout =~ ^[1-9][0-9]*$ ]] || die "pr-tend.stepTimeout must be whole seconds: $timeout"
-  verify=$(cd "$wt" && prc_setting verify "$b" false) || die "pr-config failed"
+  timeout=$(prc_get settings.stepTimeout "$b" false) || die "pr-config failed"
+  [[ $timeout =~ ^[1-9][0-9]*$ ]] || die "settings.stepTimeout must be whole seconds: $timeout"
+  verify=$(cd "$wt" && prc_get settings.verify "$b" false) || die "pr-config failed"
   [[ $verify != *$'\n'* ]] || die "verify must be a single command, not a list"
   echo "pr-act: $h ($mode session $sid) is addressing $(jq length <<<"$findings") item(s) on $b…" >&2
   result=$(cd "$wt" && harness_run "$h" "$sid" "$mode" "$timeout" \
@@ -256,7 +255,7 @@ address() {
     git -C "$wt" push --quiet "$remote" "$b" || die "push failed; nothing posted"
   fi
   local prefix id failed=0 pr_id body=""
-  prefix=$(prc_setting replyPrefix "$b" false) || die "pr-config failed"
+  prefix=$(prc_get settings.replyPrefix "$b" false) || die "pr-config failed"
   while IFS= read -r item; do
     id=$(jq -r .id <<<"$item")
     gql -f query='mutation($thread: ID!, $body: String!) {

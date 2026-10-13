@@ -60,8 +60,8 @@ plus migrating existing state.
 | PR description | A resume step ("write the PR description"); `--json-schema` on Claude |
 | Cycle caps | **Per loop run, reset on success; split by cost.** Local loops (verify + local review): 3 attempts. Remote CI rounds: 2 (a CI round is slow and expensive — Stripe's rule). Bot rounds: 2. Cap hit → needs-chrismo. Reaching clean / green resets that loop's count. Not per HEAD — every fix commits, so a per-HEAD reset would never trip. Revisit after use. |
 | Session per step | **Resume for every step in v1.** Record per-step token usage (`--output-format json`); switch late steps (CI fix, bot address) to fresh-session + findings if resumes get expensive. *Theory:* prompt cache will have expired after a CI / bot wait, so a long resumed session is re-read at full price. |
-| Deterministic verify | **Yes.** `pr-tend.verify` (lint / build / test) runs before the local model review, at zero tokens; failure output (trimmed) goes to the agent's fix step and the model reviewer never sees code that doesn't build. The step contract tells the agent the command exists, so J0 can run it before exiting. |
-| Autofix before CI fix | **Yes.** `pr-tend.autofix` (formatters, `lint --fix`) runs first on red CI or failed verify; only what remains goes to J2. |
+| Deterministic verify | **Yes.** `settings.verify` (lint / build / test) runs before the local model review, at zero tokens; failure output (trimmed) goes to the agent's fix step and the model reviewer never sees code that doesn't build. The step contract tells the agent the command exists, so J0 can run it before exiting. |
+| Autofix before CI fix | **Yes.** `settings.autofix` (formatters, `lint --fix`) runs first on red CI or failed verify; only what remains goes to J2. |
 | Scope check | **Yes.** The task text is recorded at start (`branch.<name>.pr-task`) and passed to the local reviewer as `PR_TEND_TASK`, so it can flag work outside the task (Spotify's top judge veto). |
 | Per-step turn cap | **No.** Neither CLI shows a turn-cap flag (`--help`, 2026-10-11); `--max-budget-usd` bounds Claude steps. |
 | Verify before reply | **No, for now.** Revisit if we move fix steps to cheaper models (OpenHands-style per-thread "was it incorporated?" check). |
@@ -144,7 +144,7 @@ hit, or an escalation → **needs-chrismo** (N2).
    code and commits. Exit = done.
 3. **Pipeline** checks: exit 0, tree clean, commits ahead of base? (Dirty → one
    resume: "uncommitted changes left"; otherwise → needs-chrismo.) Runs
-   `pr-tend.verify`; failure → autofix, then resume `$U` with the trimmed
+   `settings.verify`; failure → autofix, then resume `$U` with the trimmed
    output. Verify passes → local review script. Findings → resume `$U` with the
    findings JSON → agent fixes and commits → exit → check again. Cap 3 cycles.
    Clean → pin `local`.
@@ -204,9 +204,9 @@ repeat offender means the step-contract prompt needs tightening.
 | SHA last locally reviewed clean | `refs/pr-tend/<branch>/local` |
 | SHA bot was triggered on | `refs/pr-tend/<branch>/bot` |
 | SHA accepted as reviewed enough (J5 "no") | `refs/pr-tend/<branch>/accepted` |
-| Bot command / login | `git config [--global] pr-tend.botCommand`, `pr-tend.botLogin` |
+| Bot command / login | `settings.botCommand`, `settings.botLogin` (config files) |
 | Local reviewer script | `git config [--global] pr-tend.localReview` |
-| Verify / autofix commands | `git config [--global] pr-tend.verify`, `pr-tend.autofix` (repo-level for a monorepo app: scope lookup below) |
+| Verify / autofix commands | `settings.verify`, `settings.autofix` (config files) (repo-level for a monorepo app: scope lookup below) |
 | Task text | `git config branch.<name>.pr-task` |
 | Comment IDs handed to the agent | `git config --add branch.<name>.pr-handled <id>` |
 | Prompt scope (monorepo app dir) | `git config branch.<name>.pr-scope <path>` |
@@ -238,34 +238,25 @@ watcher pass also sweeps `refs/pr-tend/<b>/*` whose branch no longer exists
 enrolled any other way, `pr-state` derives missing records (A2 fallback chain),
 verifies ancestry, and writes them.
 
-### Harness, model, effort and provider per step (proposed)
+### Harness, model, effort and provider per step
 
-Today only `pr-tend.<harness>.args` exists (one whitespace-split string per
-harness). Proposed, modeled on Sortie's per-rule settings blocks
-(`docs/workflow-reference.md`, "Rule settings blocks", read 2026-10-12): a step
-may override model and effort, and the harness itself.
-
-Keys, all in git config. Git itself only layers the *same* key across scopes
-(system < global < repo < worktree, last wins; multi-valued keys accumulate
-under `--get-all`). The step-to-harness fallback and the empty-value clear below
-are not git behavior (observed in a scratch repo, 2026-10-12): they need one
-resolver in our code, whichever store holds the values.
-
-| Key | Meaning |
-|---|---|
-| `pr-tend.harness` / `pr-tend.<step>.harness` | which harness a step runs on; `branch.<b>.pr-harness` still wins once a session exists |
-| `pr-tend.<harness>.model`, `.effort`, `.args` | base settings for a harness |
-| `pr-tend.pi.provider` | pi only; Claude has no equivalent |
-| `pr-tend.<step>.<harness>.model`, `.effort`, `.provider`, `.args` | override for one step on one harness |
+Modeled on Sortie's per-rule settings blocks (`docs/workflow-reference.md`,
+"Rule settings blocks", read 2026-10-12): a step may override model and effort,
+and the harness itself. Built as JSON blocks (`harnesses.<h>`, `steps.<step>`,
+`steps.<step>.<h>`); see "Config files" below. A git-config draft of the same
+keys was dropped. Git only layers the *same* key across scopes, so the
+step-to-harness fallback needed our own resolver whichever store held the
+values.
 
 `<step>` is a verb name (`address`, `review`, `ci-fix`, `describe`, ...).
 
-Resolution, per key: the step-and-harness block replaces the harness block's
-value whole; an unwritten key is inherited; an **empty value** clears the
-inherited key so the runtime's own default applies (git config can't store
-null, so `git config pr-tend.address.pi.effort ""` plays that part). Not
-overridable per step: the harness command and timeouts (`pr-tend.stepTimeout`
-stays global).
+Resolution, per key:
+- The step-and-harness block replaces the harness block's value whole.
+- A key that isn't written is inherited.
+- `null` clears the inherited key, so the runtime's own default applies.
+
+The harness command and timeouts can't be overridden per step;
+`settings.stepTimeout` is global.
 
 Warn when a step override sets `model` but not `effort` and an `effort` is
 inherited, because level names depend on the model (Sortie's
@@ -283,86 +274,94 @@ To verify: whether a resumed session (`pr-session`) accepts a different model
 or effort than it started with; Sortie says a change between attempts doesn't
 end its session, which is untested here.
 
-### Config files: XDG global + branch-local copy (proposed)
+### Config files: XDG global + branch-local copy (built 2026-10-13)
 
-Instead of dotted git-config keys, the same settings live in JSON (the scripts
-already use `jq`):
+The settings live in JSON instead of dotted git-config keys:
 
-- **Global:** `${XDG_CONFIG_HOME:-~/.config}/pr-tend/config.json`, one per
-  machine (no system layer; single user).
-- **Branch-local:** a hidden JSON file per branch. Where it lives (worktree
-  dotfile, git-ignored, vs under `.git/` shared across worktrees) is undecided.
+- **Global:** `$PR_TEND_CONFIG`, else `${XDG_CONFIG_HOME:-~/.config}/pr-tend/config.json`,
+  one per machine (no system layer; single user).
+- **Branch:** `<git common dir>/pr-tend/<branch>.json` (`%` and `/` encoded),
+  shared by every worktree of the repo.
 
-Shape (same keys as the git-config draft above):
+Shape:
 
 ```json
 {"harness": "claude",
  "harnesses": {"claude": {"model": "...", "effort": "high"},
                "pi": {"provider": "...", "model": "...", "effort": "medium"}},
- "steps": {"address": {"harness": "pi", "pi": {"model": "...", "effort": null}}}}
+ "steps": {"address": {"harness": "pi", "pi": {"model": "...", "effort": null}}},
+ "settings": {"verify": "make test", "botLogin": ["marge"]}}
 ```
 
-**Scalar settings** (`stepTimeout`, `replyPrefix`, `verify`, `botLogin`,
-`remote`, `notify`, `interval`, ...) live in a `settings` block in the same two
-files, read with `pr-config setting <key>`: one line per element for a list,
-exit 3 when unset (1 is always an error, so a broken config never reads as
-"unset"). Branch beats global. A key set to `null` is unset. A key
-absent from both files **falls back to `git config pr-tend.<key>`**, so existing
-setups keep working while values move over; a `null` stops the fallback. Outside
-a repo (the watcher under launchd) only the global file and global git config
-are read (`--no-branch`). `pr-act address` stops on a config error; `pr-watch`
-reports it on the repo's line in `pr-watch status` and refuses to `install`.
-`verify` must be one command (a list is refused before the agent runs). Per-branch *state* (enrollment, `pr-session`, `pr-harness`,
-`pr-handled`, ...) and the `pr-tend.repo` registry stay in git config.
+**One merge, two readers.** `lib/pr-config.sh` deep-merges the branch file over
+the global file in SuperDB. A leaf in the higher layer replaces every leaf at,
+above or below its path in the lower one, lists are leaves, and `null` is kept
+through the merge. Then:
 
-**Built-in defaults** are the bottom layer, in one `PRC_DEFAULTS` block in
-`lib/pr-config.sh`: `harness: claude`; settings `remote: origin`,
-`stepTimeout: 1800`, `interval: 300`, `replyPrefix: "🤖 "`, and `verify`,
-`notify`, `botLogin`, `botIgnore`, `botIgnoreBody` empty. Lookup is branch file, global file, git config
-`pr-tend.<key>`, default; a `null` in a file skips to the default. Exit 3 now
-only means a key with no value and no default. A missing file is `{}`, so no
-global file is needed to run.
+- `pr-config get <path>` (`prc_get`) reads any dotted path, the same paths
+  `set` and `unset` take, over the **built-in defaults** (`PRC_DEFAULTS`).
+  A `null` in a file removes the key from the files, so the default applies.
+  - **Defaults:** `harness: claude`; settings `remote: origin`,
+    `stepTimeout: 1800`, `interval: 300`, `replyPrefix: "🤖 "`, and `verify`,
+    `notify`, `botLogin`, `botIgnore`, `botIgnoreBody` empty.
+  - **Output:** a string prints raw, a list one element per line, an object as
+    JSON; `--json` prints JSON for all of them.
+  - **Exit codes:** 3 means no value and no default; 1 is always an error.
+- `pr-config step <step>` (`prc_step`) is what one step runs with.
+  - **Harness:** `--harness`, else the step's `harness`, else the top-level
+    `harness`, else the default.
+  - **Settings:** that harness's block, with the step's block for that harness
+    laid over it. A step-level `null` clears the harness block's key, so the
+    nulls have to survive the merge; that's why the merge keeps them.
 
-**One library.** `lib/pr-config.sh` holds the resolver; `bin/pr-config` is a
-thin CLI over it and `pr-act` / `pr-watch` / `pr-state` source it (no shell-out). Callers
-only call `prc_get` / `prc_setting` and can't tell which layer a value came
-from. The functions never exit and check every step (`|| return`), because
-callers run them as `x=$(prc_...) || die`, where errexit is off; the CLI calls
-them the same way so its tests cover that path.
+Callers can't tell which layer a value came from. `pr-act`, `pr-watch` and
+`pr-state` source the lib and only call `prc_get` and `prc_step`. The lib's
+functions never exit and check every step (`|| return`), because callers run
+them as `x=$(prc_...) || die`, where errexit is off. The CLI calls them the same
+way, so its tests cover that path. The watcher has no branch, so it reads with
+`--no-branch`. `pr-act address` stops on a config error. `pr-watch` reports the
+error on the repo's line in `pr-watch status` and refuses to `install`.
+`verify` must be one command; a list is refused before the agent runs.
 
-**Writing values:** `pr-config init --global` creates the global file as a
-skeleton (empty blocks, so git config fallbacks still apply).
-`pr-config set [--global | --branch <b>] [--json] <path> <value>` writes one
-value at a dotted path (`harnesses.claude.model`, `steps.address.harness`,
-`settings.verify`), to the current branch's file by default. Values are strings
-unless `--json` (numbers, lists, `null` to clear an inherited key).
-`pr-config unset <path>` removes a key so it inherits again. `set` on a branch
-with no file creates one holding only that key.
+**No git config fallback.** `pr-tend.<key>` and `pr-tend.<harness>.args` aren't
+read any more; nobody had any set (checked 2026-10-13). Per-branch *state* stays
+in git config: enrollment, `pr-session`, `pr-harness`, `pr-handled`, and so on,
+plus the `pr-tend.repo` registry.
+
+**Writing values:**
+- `pr-config init --global` creates the global file as a skeleton of empty
+  blocks.
+- `pr-config set [--global | --branch <b>] [--json] <path> <value>` writes one
+  value at a dotted path, to the current branch's file by default.
+  - Values are strings unless `--json` (numbers, lists, `null` to clear an
+    inherited key). `--json` takes exactly one JSON value.
+  - Each parent on the path must be missing, `null` or an object.
+  - Writes go through SuperDB `put`, so the file's empty blocks and other keys
+    stay.
+- `pr-config unset <path>` removes a key so it inherits again.
+- `set` on a branch with no file creates one holding only that key.
 
 **Init is a copy.** Starting (or enrolling) a branch copies the global file to
-the branch-local one. Per-PR differences are overrides written into that copy by
-commands, because they're common: some PRs are cheap and easy, others thorough
-and need a frontier model. (Command flags for this are not designed.)
+the branch file. Per-PR differences are overrides written into that copy,
+because they're common: some PRs are cheap and easy, others thorough and need a
+frontier model. (No command flags are designed for this yet.) The merge works
+whether the branch file is a full copy or only overrides. With a full copy,
+later edits to the global file don't reach existing branches, and no way to
+refresh a branch from global is specified.
 
-**Resolution** for a step, later layers win, `null` removes the key:
-global harness block, branch harness block, global step block, branch step
-block. The harness itself is picked branch step, global step, branch default,
-global default, `claude`.
-
-Tested 2026-10-12 with SuperDB v0.3.0 (`collect` the files into `[global,
-branch]`, `coalesce(…, {})` for a missing layer, record spread to merge,
-`flatten | where value is not null | unflatten` to drop nulls). Observed: a
-branch override beats a global step block, a branch can switch the harness,
-`null` clears an inherited key, and a missing branch file resolves from global
-alone. The same overlay works whether the branch file is a full copy or only the
-overrides, so copy-at-init vs read-through is a policy choice, not a resolver
-change. With a full copy, later edits to the global file don't reach existing
-branches, and no way to refresh a branch from global is specified.
-
-Caveats from the test: spread replaces a nested map whole (one level deep, as in
-Sortie); a misspelled step or harness resolves to nothing with no error, so the
-real resolver needs validation; this makes SuperDB a dependency of the PR
-scripts (see the `jq` TODO under Open).
+**SuperDB notes (0.3.0, observed 2026-10-13):**
+- **No here-strings:** `super` reads nothing from `<<<`, so input is always
+  piped.
+- **No lateral subqueries:** `unnest … into ( … aggregate … )` panicked
+  ("context canceled") in 12 of 200 runs. The merge uses plain `unnest` and
+  `aggregate … by` instead, with 0 failures in 200 runs, and 0 in 450 calls of
+  the finished lib.
+- **Key order:** `unflatten` needs keys grouped by prefix, so the merged keys
+  come out alphabetical.
+- **No JSON encoder:** SuperDB has no to-JSON function, so `get` uses a second
+  call to print raw or JSON.
+- **Unvalidated names:** a misspelled step or harness still resolves to nothing,
+  with no error.
 
 ## Atomic actions
 
@@ -393,8 +392,8 @@ scripts (see the `jq` TODO under Open).
 | A7 | post reply / resolve thread | posts the agent's J4 text; resolves only after replying |
 | A8 | local review | run `pr-tend.localReview`; findings → next agent step; clean → pin `local`. **The one Act verb that spends tokens** (the default reviewer is a model call) — exception to principle 1's zero-token rule |
 | A9 | attach | lock + interactive resume (takeover) |
-| A10 | verify | run `pr-tend.verify`; trim output to errors; zero tokens |
-| A11 | autofix | run `pr-tend.autofix`; commit the result if the tree changed |
+| A10 | verify | run `settings.verify`; trim output to errors; zero tokens |
+| A11 | autofix | run `settings.autofix`; commit the result if the tree changed |
 
 ### Judgment — agent steps (resume `$U` with a step-contract prompt)
 
@@ -501,7 +500,7 @@ on". J5 "no re-review" → pin `accepted`, so the next pass doesn't ask again.
 
 Purpose: catch what the PR bot would catch **before** it costs a PR
 interaction — fewer bot round-trips, less PR comment noise, faster loop. Runs
-only after `pr-tend.verify` passes (A10), so the model never reviews code that
+only after `settings.verify` passes (A10), so the model never reviews code that
 doesn't build.
 
 ```
@@ -572,11 +571,11 @@ not built; a pass only observes and reports:
   worktree is still on that branch. ❌ needs chrismo · ⚠️ unknown · 🔧 work for
   later (behind, unpushed, bot threads, review not covered, no PR) · ⏳ CI
   running · ✅ ready · 🏁 merged · 🚫 closed.
-- Notifications (N2, macOS by default, `pr-tend.notify` overrides) only for a
+- Notifications (N2, macOS by default, `settings.notify` overrides) only for a
   reason that wasn't there last pass (N3): CI red, restack conflict, human
   threads, foreign push, merged, ready to merge.
 - `pr-watch status` prints the last pass. `pr-watch install` / `uninstall`
-  manage the launchd job, opt-in per machine; interval `pr-tend.interval`,
+  manage the launchd job, opt-in per machine; interval `settings.interval`,
   default 300 s.
 - O7 in `pr-state` (2026-10-12): besides inline threads, bot **review bodies**
   (non-blank) and bot **top-level PR comments** are owed items, typed
@@ -584,7 +583,7 @@ not built; a pass only observes and reports:
   `.threads.by_type`; all count toward `owed_bot`. A review/comment stays owed
   until its node id is in multi-valued `branch.<name>.pr-handled` (`pr-act
   address` adds it). Human top-level comments are not tracked.
-  `pr-tend.botLogin` is multi-valued and matches with or without `[bot]`.
+  `settings.botLogin` is a list and matches with or without `[bot]`.
 
 Rejected alternatives: `/loop` per session (tokens per idle wake, dies with the
 session); built-in PR subscriptions (Claude-only, untested); git hooks (blind to
@@ -652,15 +651,15 @@ prompts, exit codes) so the watcher can call them unchanged.
 3. Fetch the owed bot items' text with one `nodes(ids:)` query; normalize to
    `{id, type, path, line, outdated, conversation}`.
 4. Agent step: resume `branch.<b>.pr-session` or mint one (stored with
-   `pr-harness` after a successful run), run under `pr-tend.stepTimeout`
+   `pr-harness` after a successful run), run under `settings.stepTimeout`
    (1800 s). Returns `{outcome, commit_message, summary, items: [{id, action,
    reply}]}`, action ∈ fixed / reply / pushback / ask. Claude: `--json-schema`,
    result in `structured_output`, edit tools only (commit, push, `gh` denied).
    pi: `--tools read,edit,write`, result parsed from a final ```json block.
 5. Pipeline commits the edits (`gave-up` → nothing committed or posted), runs
-   `pr-tend.verify` (fail → commit kept, nothing pushed), prints the plan.
+   `settings.verify` (fail → commit kept, nothing pushed), prints the plan.
    `--no-publish` stops here; the agent has already run.
-6. Push, then: threads get a reply (prefix `pr-tend.replyPrefix`, default
+6. Push, then: threads get a reply (prefix `settings.replyPrefix`, default
    "🤖 "); fixed / reply resolve it, pushback stays open. Review bodies and PR
    comments get one combined PR comment and are added to
    `branch.<b>.pr-handled`. The comment links to each item by URL rather than
@@ -670,8 +669,8 @@ prompts, exit codes) so the watcher can call them unchanged.
    printed under "needs chrismo" and left alone.
 
 **Trust:** a thread is handed over only if every comment in it is from a bot
-(GitHub `Bot` type or `pr-tend.botLogin`) or the viewer. Anyone else's text
-could steer edits that `pr-tend.verify` then runs and the push publishes, so
+(GitHub `Bot` type or `settings.botLogin`) or the viewer. Anyone else's text
+could steer edits that `settings.verify` then runs and the push publishes, so
 such threads go to "needs chrismo" untouched. The agent never runs shell
 commands beyond read-only git (Claude) or none at all (pi); `verify` runs repo
 code on agent edits, unsandboxed — `--no-publish` lets chrismo look first.
@@ -784,20 +783,13 @@ short-lived, so it can't own children like their daemons do. Plan:
 - N2 channel beyond the tab glyph (PushNotification? `say`?)
 - Agent-reply marking, if/when agents reply on human threads (deferred)
 - **Fork per step** — spike done, both harnesses fork identically; now just a decision
-- **Where do named harness profiles live?** Git config (as in "Harness, model,
-  effort and provider per step") vs an XDG file such as
-  `~/.config/pr-tend/` holding reusable profiles (harness, provider, model,
-  effort, args) that steps reference by name. Git config is where every setting
-  lives so far; XDG is used only for watcher state (`~/.local/state/pr-tend`).
-  Leaning XDG JSON plus a branch-local copy; see "Config files: XDG global +
-  branch-local copy".
-- **Why both `get` and `setting`?** (tabled 2026-10-13) Two verbs, two
-  blocks (`harnesses`/`steps` vs `settings`), two resolvers (SuperDB overlay vs
-  jq lookup). Revisit whether one lookup could serve both.
-- **TODO: SuperDB instead of `jq`?** `pr-state`, `pr-act` and `pr-watch` shell
-  out to `jq` (including the `CLASSIFY` filter); other scripts in this repo use
-  `super`. Decide whether to move the PR scripts over, or document why not.
-  Not part of the restack work.
+- **Named harness profiles?** Reusable profiles (harness, provider, model,
+  effort, args) that steps reference by name, in the config files. Not built;
+  today a step names a harness and its block.
+- **TODO: move `pr-state`, `pr-act` and `pr-watch` from `jq` to SuperDB.**
+  Decided 2026-10-13: SuperDB, always. `pr-config` is done. The rest still shell
+  out to `jq`, including the `CLASSIFY` filter and the GraphQL shaping. Not part
+  of the restack work.
 
 ## Prior art — summary
 

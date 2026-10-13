@@ -10,7 +10,7 @@
 #              on reasons chrismo is needed that are new since the last pass,
 #              and records the pass.
 #   status     print the last pass
-#   install    launchd job: a pass every pr-tend.interval seconds (default 300)
+#   install    launchd job: a pass every settings.interval seconds (default 300)
 #   uninstall  remove the job
 #
 # Glyphs: ❌ needs chrismo   ⚠️ state unknown   🔧 work for later   ⏳ CI running
@@ -20,8 +20,8 @@
 #
 # Env:    PR_TEND_STATE_DIR (~/.local/state/pr-tend), STATUS_DIR (~/.claude/tab-status)
 #         PR_WATCH_TIMEOUT (120): seconds a fetch or pr-state may take
-# Config: read with lib/pr-config.sh, no branch file (global file, git config
-#         pr-tend.<key>, then built-in defaults): notify, interval, remote.
+# Config: read with lib/pr-config.sh, no branch file (global file over
+#         built-in defaults): settings.notify, .interval, .remote.
 #         notify — shell command, run with <title> <message> appended
 #         (default: a macOS notification)
 
@@ -58,7 +58,7 @@ EOF
 # Notifier stdout would land in the pass record (check runs inside $(...)).
 notify() {
   local cmd
-  cmd=$(prc_setting notify "" true) || echo "pr-watch: pr-config failed; using the default notifier" >&2
+  cmd=$(prc_get settings.notify "" true) || echo "pr-watch: pr-config failed; using the default notifier" >&2
   if [[ -n $cmd ]]; then
     sh -c "$cmd"' "$@"' _ "$1" "$2" </dev/null >&2 || echo "pr-watch: notify failed: $cmd" >&2
   else
@@ -123,7 +123,7 @@ run_pass() {
       | awk '$2 == "true" { sub(/^branch\./, "", $1); sub(/\.pr-tend$/, "", $1); print $1 }')
     (( ${#branches[@]} )) || continue
 
-    if ! remote=$(cd "$repo" && prc_setting remote "" true); then
+    if ! remote=$(cd "$repo" && prc_get settings.remote "" true); then
       lines+="$name"$'\t-\t⚠️\t'"pr-config failed"$'\n'
       continue
     fi
@@ -162,8 +162,8 @@ install_job() {
   plist=$(plist_path)
   prog="$HOME/.local/bin/pr-watch"
   [[ -x $prog ]] || prog=$(realpath "$0")
-  interval=$(prc_setting interval "" true) || { echo "pr-watch: pr-config failed" >&2; exit 1; }
-  [[ $interval =~ ^[1-9][0-9]*$ ]] || { echo "pr-watch: pr-tend.interval must be whole seconds: $interval" >&2; exit 1; }
+  interval=$(prc_get settings.interval "" true) || { echo "pr-watch: pr-config failed" >&2; exit 1; }
+  [[ $interval =~ ^[1-9][0-9]*$ ]] || { echo "pr-watch: settings.interval must be whole seconds: $interval" >&2; exit 1; }
   mkdir -p "$LAUNCH_AGENTS" "$STATE_DIR"
   tmp=$(mktemp)
   cat > "$tmp" <<EOF

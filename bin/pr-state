@@ -22,8 +22,8 @@
 # fetch. One gh GraphQL call, two for a non-default parent. A gh failure is
 # recorded in .errors and the git facts are still reported.
 #
-# Config: read with lib/pr-config.sh (branch and global files, git config
-# pr-tend.<key>, then built-in defaults): remote (origin), botLogin (bots that
+# Config: read with lib/pr-config.sh (branch file over global file over
+# built-in defaults), under settings: remote (origin), botLogin (bots that
 # post as users, counted as bots; a [bot] suffix is optional), botIgnore (bots
 # whose posts are never owed, e.g. github-actions preview links), botIgnoreBody
 # (regexes: bot reviews and PR comments whose body matches are never owed).
@@ -78,7 +78,7 @@ git rev-parse --git-dir >/dev/null 2>&1 || die "not a git repository"
 [[ -n $branch ]] || branch=$(git branch --show-current)
 [[ -n $branch ]] || die "detached HEAD; name a branch"
 head=$(git rev-parse -q --verify "refs/heads/$branch^{commit}") || die "no such branch: $branch"
-remote=$(prc_setting remote "$branch" false) || die "pr-config failed"
+remote=$(prc_get settings.remote "$branch" false) || die "pr-config failed"
 
 errors=()
 cfg() { git config --get "branch.$branch.$1" || true; }
@@ -89,10 +89,9 @@ count() { git rev-list --count "$@"; }
 patch_id() { git diff -U0 "$1" "$2" | git patch-id --stable | cut -d' ' -f1; }
 jnull() { if [[ -n $1 ]]; then jq -n --arg v "$1" '$v'; else echo null; fi; }
 jlist() { { git config --get-all "$1" || true; } | jq -R . | jq -sc .; }
-slist() { local out; out=$(prc_setting "$1" "$branch" false) || return; jq -Rsc 'split("\n") | map(select(. != ""))' <<<"$out"; }
-bots=$(slist botLogin) || die "pr-config failed"
-ignore=$(slist botIgnore) || die "pr-config failed"
-ignore_body=$(slist botIgnoreBody) || die "pr-config failed"
+bots=$(prc_get settings.botLogin "$branch" false json) || die "pr-config failed"
+ignore=$(prc_get settings.botIgnore "$branch" false json) || die "pr-config failed"
+ignore_body=$(prc_get settings.botIgnoreBody "$branch" false json) || die "pr-config failed"
 jq -n --argjson r "$ignore_body" '$r[] as $re | "" | test($re)' >/dev/null 2>&1 \
   || die "botIgnoreBody has an invalid regex: $ignore_body"
 
