@@ -437,7 +437,7 @@ EOF
   setup_launchd
   "$PR_WATCH" install
   : > "$PS_FIXTURES/launchctl"
-  "$PR_CONFIG" set --global settings.interval 5m
+  write_cfg '{"settings":{"interval":"5m"}}'
   run "$PR_WATCH" install
   [ "$status" -ne 0 ]
   [ "$(plutil -extract StartInterval raw "$PLIST")" = 300 ]
@@ -454,9 +454,9 @@ EOF
 
 # ── settings via pr-config: the global file over the defaults ───────────────
 
+# write_cfg <json>: the global file, keeping the stub notifier unless <json> sets one.
 write_cfg() {
-  printf '%s\n' "$1" > "$PR_TEND_CONFIG"
-  [[ $1 == *notify* ]] || "$PR_CONFIG" set --global settings.notify "$TMP/fakebin/notify"
+  jq -n --arg n "$TMP/fakebin/notify" --argjson c "$1" '{settings: {notify: $n}} * $c' > "$PR_TEND_CONFIG"
 }
 
 @test "config: git config pr-tend.notify is not read" {

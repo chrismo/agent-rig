@@ -879,7 +879,7 @@ review() {
 @test "next: uses the configured remote" {
   git remote rename origin up
   git switch -qc feat && commit a.txt a
-  "$PR_CONFIG" set settings.remote up >/dev/null
+  "$PR_CONFIG" set --global settings.remote up >/dev/null
   state
   [ "$(field '[.next[] | select(.key == "push") | .cmd][0]')" = "git push -u up feat" ]
 }

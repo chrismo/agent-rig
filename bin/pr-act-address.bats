@@ -492,7 +492,7 @@ EOF
 }
 
 @test "a non-numeric settings.stepTimeout is refused" {
-  "$PR_CONFIG" set --global settings.stepTimeout 5m
+  printf '{"settings":{"stepTimeout":"5m"}}\n' > "$PR_TEND_CONFIG"
   run "$PR_ACT" address
   [ "$status" -ne 0 ]
   [[ "$output" == *"stepTimeout"* ]] || false

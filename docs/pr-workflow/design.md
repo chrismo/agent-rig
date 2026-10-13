@@ -325,6 +325,35 @@ way, so its tests cover that path. The watcher has no branch, so it reads with
 error on the repo's line in `pr-watch status` and refuses to `install`.
 `verify` must be one command; a list is refused before the agent runs.
 
+**Typed files (built 2026-10-13).** Every file is checked against a SuperDB
+type when it's read, and `set` / `unset` check the result before writing it.
+Each problem is one line naming the file and the dotted path:
+
+```
+pr-config: ~/.config/pr-tend/config.json: settings.verfy: unknown key
+pr-config: ~/.config/pr-tend/config.json: settings.stepTimeout: cannot cast to uint64: 30m
+pr-config: <git dir>/pr-tend/feat.json: settings.remote: global file only
+```
+
+- **What's allowed:** `harness` is `claude` or `pi`. `harnesses.claude` takes
+  `model`, `effort` (low … max) and `args`; `harnesses.pi` takes `provider`,
+  `model`, `effort` (off … max) and `args`. `steps.<step>` takes `harness` and a
+  block per harness. Settings are typed (strings, `uint64`, string lists).
+  `null` is allowed anywhere, to clear an inherited key.
+- **Step names are a closed list** in `PRC_STEPS`: `address` plus the planned
+  agent steps `ci-fix`, `describe`, `implement`, `review`. A new verb that runs
+  an agent has to be added there; `pr-config step <unknown>` is refused.
+- **Global-only settings:** `remote`, `interval` and `notify` are the watcher's,
+  and the watcher reads no branch file. A branch file setting one is refused,
+  so pr-watch, pr-state and pr-act can't disagree about them.
+- **How:** `cast` fills a typed record but silently drops keys the type lacks,
+  so the check also compares the input's leaf paths with the cast's.
+- **Limits:** a string number such as `"1800"` is accepted as 1800, and
+  `1800.5` is cut to 1800. An unknown key holding an empty block (`"x": {}`)
+  has no leaves to compare, so it isn't reported; it also sets nothing.
+- **Cost:** about 50 ms per file per read (2026-10-13: `prc_get` 184 → 282 ms
+  with both files present).
+
 **No git config fallback.** `pr-tend.<key>` and `pr-tend.<harness>.args` aren't
 read any more; nobody had any set (checked 2026-10-13). Per-branch *state* stays
 in git config: enrollment, `pr-session`, `pr-harness`, `pr-handled`, and so on,
@@ -352,8 +381,10 @@ new `botIgnoreBody`, never reached it. Branch files made by the old `init` are
 still full copies; `pr-config init --force` replaces one with empty blocks.
 
 **SuperDB notes (0.3.0, observed 2026-10-13):**
-- **No here-strings:** `super` reads nothing from `<<<`, so input is always
-  piped.
+- **No here-strings or redirects:** `super` reads nothing from `<<<` or from
+  a `<` redirect of a file, so input is always piped.
+- **Optional fields need 0.2.0+:** `{a?:string}` doesn't parse on older builds
+  (0.1.0 or the 2025 dev pins). The config types need it.
 - **No lateral subqueries:** `unnest … into ( … aggregate … )` panicked
   ("context canceled") in 12 of 200 runs. The merge uses plain `unnest` and
   `aggregate … by` instead, with 0 failures in 200 runs, and 0 in 450 calls of
@@ -362,8 +393,6 @@ still full copies; `pr-config init --force` replaces one with empty blocks.
   come out alphabetical.
 - **No JSON encoder:** SuperDB has no to-JSON function, so `get` uses a second
   call to print raw or JSON.
-- **Unvalidated names:** a misspelled step or harness still resolves to nothing,
-  with no error.
 
 ## Atomic actions
 

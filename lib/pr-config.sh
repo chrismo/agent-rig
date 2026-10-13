@@ -7,13 +7,42 @@
 # each step checks its own status. prc_get returns 3 for a path with no value
 # and no default.
 #
-# super reads nothing from a here-string (super 0.3.0), so input is always piped.
+# super reads nothing from a here-string or a < redirect (super 0.3.0), so input
+# is always piped.
 
 PRC_DEFAULTS='{"harness": "claude",
   "settings": {"remote": "origin", "stepTimeout": 1800, "interval": 300, "replyPrefix": "🤖 ",
                "verify": "", "notify": "",
                "botLogin": [], "botIgnore": [], "botIgnoreBody": []}}'
 PRC_SKELETON='{"harness": "claude", "harnesses": {"claude": {}, "pi": {}}, "steps": {}, "settings": {}}'
+
+# A step is a pr-act verb that runs an agent: add new ones here. The global-only
+# settings are the watcher's, which reads no branch file.
+PRC_HARNESSES=(claude pi)
+PRC_STEPS=(address ci-fix describe implement review)
+PRC_GLOBAL_ONLY=(remote interval notify)
+PRC_SETTINGS='stepTimeout?:uint64,replyPrefix?:string,verify?:string,
+              botLogin?:[string],botIgnore?:[string],botIgnoreBody?:[string]'
+PRC_TYPES='type hclaude = {model?:string,effort?:enum(low,medium,high,xhigh,max),args?:string}
+type hpi = {provider?:string,model?:string,effort?:enum(off,minimal,low,medium,high,xhigh,max),args?:string}
+type harness = enum(claude,pi)
+type step = {harness?:harness,claude?:hclaude,pi?:hpi}
+type steps = {'"$(printf '"%s"?:step,' "${PRC_STEPS[@]}" | sed 's/,$//')"'}
+type branch_settings = {'"$PRC_SETTINGS"'}
+type global_settings = {remote?:string,interval?:uint64,notify?:string,'"$PRC_SETTINGS"'}'
+
+# One line per problem: a key the layer's type doesn't have, or a value that
+# doesn't cast. cast drops unknown keys silently, hence the diff of the input's
+# leaves against the cast's.
+PRC_CHECK='fork
+    ( unnest flatten(this) | values {k: join(key, "."), ok: false, err: ""} )
+    ( unnest flatten(cast(this, <config>))
+      | values {k: join(key, "."), ok: not is_error(value),
+                err: is_error(value) ? f"{under(value).message}: {under(value).on}" : ""} )
+| aggregate ok:=or(ok), errs:=collect(err) by k
+| where not ok | sort k
+| values {k, err: join(errs, "")}
+| values err != "" ? f"{k}: {err}" : k in GLOBAL_ONLY_ ? f"{k}: global file only" : f"{k}: unknown key"'
 
 # Deep merge of {i, v} layers: a leaf from a higher i replaces every leaf at,
 # above or below its path in lower layers. Lists are leaves; nulls are kept.
@@ -60,12 +89,27 @@ prc_superdb_binary() {
 
 prc_super() { "$(prc_superdb_binary)" "$@"; }
 
-# prc_layer <file>: its JSON, or {} when it doesn't exist.
+# prc_problems <global|branch> <name>: a layer's JSON on stdin; reports each
+# problem as "<name>: <problem>" and returns 1 if there are any.
+prc_problems() {
+  local out line only
+  only=$(printf '"settings.%s",' "${PRC_GLOBAL_ONLY[@]}")
+  out=$(prc_super -i json -f line -c "$PRC_TYPES
+    type config = {harness?:harness,harnesses?:{claude?:hclaude,pi?:hpi},steps?:steps,settings?:${1}_settings}
+    ${PRC_CHECK/GLOBAL_ONLY_/[${only%,}]}" -) || { prc_err "couldn't check $2 (the types need super 0.2.0 or later)"; return; }
+  [[ -n $out ]] || return 0
+  while IFS= read -r line; do prc_err "$2: $line"; done <<<"$out"
+  return 1
+}
+
+# prc_layer <file> [global|branch]: its JSON, or {} when it doesn't exist.
+# Checked against that layer's type when one is named.
 prc_layer() {
   local kinds
   [[ -e $1 ]] || { echo '{}'; return 0; }
   kinds=$(prc_super -i json -f line -c 'values kind(this)' "$1" 2>/dev/null) || kinds=
   [[ $kinds == record ]] || { prc_err "not a JSON object: $1"; return; }
+  if [[ -n ${2:-} ]]; then cat "$1" | prc_problems "$2" "$1" || return; fi
   cat "$1"
 }
 
@@ -92,10 +136,10 @@ prc_files() {
     b=$(git branch --show-current 2>/dev/null) || b=
   fi
   gf=$(prc_global_file)
-  g=$(prc_layer "$gf") || return
+  g=$(prc_layer "$gf" global) || return
   if [[ -n $b ]]; then
     bf=$(prc_branch_file "$b") || return
-    bj=$(prc_layer "$bf") || return
+    bj=$(prc_layer "$bf" branch) || return
   fi
   printf '{"i":1,"v":%s}\n{"i":2,"v":%s}\n' "$g" "$bj" | prc_super -i json -j -c "${PRC_MERGE/WHERE_/}" -
 }
@@ -156,10 +200,10 @@ prc_show() {
 # that harness over it. A null in the step block clears the harness block's key.
 prc_step() {
   local step=$1 forced=$3 hexpr files
-  [[ $step =~ ^[a-z][a-z0-9-]*$ ]] || { prc_err "invalid step name: $step"; return; }
+  [[ " ${PRC_STEPS[*]} " == *" $step "* ]] || { prc_err "unknown step: $step (${PRC_STEPS[*]})"; return; }
   hexpr="coalesce(f.steps[\"$step\"].harness, f.harness, d.harness)"
   if [[ -n $forced ]]; then
-    [[ $forced =~ ^[a-z][a-z0-9-]*$ ]] || { prc_err "invalid harness name: $forced"; return; }
+    [[ " ${PRC_HARNESSES[*]} " == *" $forced "* ]] || { prc_err "unknown harness: $forced (${PRC_HARNESSES[*]})"; return; }
     hexpr="\"$forced\""
   fi
   files=$(prc_files "$2" false) || return
@@ -190,7 +234,8 @@ prc_json_string() { # <string>
 # prc_write <file> <super query over {doc, v}> <value-json>: rewrite <file>
 # through the query. Leaves the file alone on failure.
 prc_write() {
-  local f=$1 cur='{}' tmp
+  local f=$1 cur='{}' tmp layer=branch
+  [[ $f != "$(prc_global_file)" ]] || layer=global
   if [[ -e $f ]]; then cur=$(prc_layer "$f") || return; fi
   mkdir -p "$(dirname "$f")" || return
   tmp=$(mktemp "$f.XXXXXX") || return
@@ -199,6 +244,7 @@ prc_write() {
     prc_err "couldn't update $f"
     return
   fi
+  cat "$tmp" | prc_problems "$layer" "$f" || { rm -f "$tmp"; return 1; }
   mv "$tmp" "$f"
 }
 
