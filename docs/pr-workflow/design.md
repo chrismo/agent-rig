@@ -644,7 +644,7 @@ short-lived, so it can't own children like their daemons do. Plan:
 ## Prior art — summary
 
 Full research (two rounds, 2026-10-11) is in `prior-art.md`;
-clones in `~/modev/ref/` (sortie, av, gh-stack, attractor, symphony, roast).
+clones in `~/modev/pr-workflow-prior-art/` (sortie, av, gh-stack, attractor, symphony, roast).
 
 - **Nothing to adopt wholesale.** Sortie (closest: same `claude -p` adapter,
   orchestrator-driven) lacks pi, stacks, git-native state, takeover, and lets

@@ -35,7 +35,7 @@ cloud-only at launch per reports; not usable for local worktrees and stacks yet.
 ## Prior art, round 2 (2026-10-11)
 
 Two research passes; metadata via `gh api` the same day. Shallow clones in
-`~/modev/ref/`: sortie, av, gh-stack, attractor, symphony, roast.
+`~/modev/pr-workflow-prior-art/`: sortie, av, gh-stack, attractor, symphony, roast.
 
 ### Software-factory orchestrators
 
