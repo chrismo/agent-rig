@@ -2,12 +2,19 @@
 #
 # pr-config - per-step harness settings for the PR pipeline.
 #
-# Usage: pr-config get <step> [<branch>]
+# Usage: pr-config get [--harness <name>] <step> [<branch>]
+#        pr-config setting [--no-branch] <key> [<branch>]
 #        pr-config init [--force] [<branch>]
 #
 #   get    print the settings <step> runs with as one JSON object: harness,
 #          then model / effort / provider / args as set. <branch> defaults to
-#          the current one.
+#          the current one. --harness forces the harness (a stored session's,
+#          or a command-line choice) and reads that harness's blocks.
+#   setting  print one value from the "settings" block, one line per element
+#          for a list. Exits 3 when unset; 1 is always an error. A key absent from both files falls
+#          back to git config pr-tend.<key>; a key set to null is unset, with no
+#          fallback. Outside a repo only the global file is read. --no-branch
+#          skips the branch file, for callers with no branch (the watcher).
 #   init   copy the global file to the branch's file (an empty overlay when
 #          there is no global file). Refuses to overwrite without --force.
 #
@@ -36,7 +43,7 @@ branch_file() { # <branch>
 # layer <file>: its JSON, or {} when it doesn't exist.
 layer() {
   [[ -e $1 ]] || { echo '{}'; return; }
-  jq -e 'type == "object"' "$1" >/dev/null 2>&1 || die "not a JSON object: $1"
+  jq -e 'type == "object"' "$1" >/dev/null || die "not a JSON object: $1"
   cat "$1"
 }
 
@@ -46,23 +53,65 @@ branch_arg() { # <branch-or-empty>
   echo "$b"
 }
 
-get() { # <step> <branch>
-  local step=$1 query
+# Duplicated from dscout bin/lib/superdb.sh. The asdf shim re-resolves on every
+# call (~14x slower), so call the pinned install directly; fall back to `super`
+# on PATH when no pinned install exists.
+superdb_binary() {
+  local version=${ASDF_SUPERDB_VERSION:-} bin
+  [[ -n $version ]] || version=$(awk '$1 == "superdb" { print $2 }' "$HOME/.tool-versions" 2>/dev/null || true)
+  bin="${ASDF_DATA_DIR:-$HOME/.asdf}/installs/superdb/$version/bin/super"
+  if [[ -n $version && -x $bin ]]; then printf '%s' "$bin"; else printf 'super'; fi
+}
+
+get() { # <step> <branch> <forced-harness-or-empty>
+  local step=$1 forced=$3 query super hexpr gf bf gj bj
+  super=$(superdb_binary)
   [[ $step =~ ^[a-z][a-z0-9-]*$ ]] || die "invalid step name: $step"
+  hexpr='coalesce(b.steps[s].harness, g.steps[s].harness, b.harness, g.harness, "claude")'
+  if [[ -n $forced ]]; then
+    [[ $forced =~ ^[a-z][a-z0-9-]*$ ]] || die "invalid harness name: $forced"
+    hexpr='"'$forced'"'
+  fi
   query='aggregate cfg:=collect(this)
     | values {g: cfg[0], b: cfg[1], s: "'$step'"}
-    | values {g, b, s, h: coalesce(b.steps[s].harness, g.steps[s].harness, b.harness, g.harness, "claude")}
+    | values {g, b, s, h: '"$hexpr"'}
     | values {harness: h, ...coalesce(g.harnesses[h], {}), ...coalesce(b.harnesses[h], {}),
               ...coalesce(g.steps[s][h], {}), ...coalesce(b.steps[s][h], {})}
     | values flatten(this) | unnest this | where value is not null
     | aggregate kv:=collect(this) | values unflatten(kv)'
-  { layer "$(global_file)"; layer "$(branch_file "$2")"; } | super -j -c "$query" -
+  gf=$(global_file)
+  bf=$(branch_file "$2")
+  gj=$(layer "$gf")
+  bj=$(layer "$bf")
+  printf '%s\n%s\n' "$gj" "$bj" | "$super" -j -c "$query" -
+}
+
+setting() { # <key> <branch-or-empty> <no-branch: true|false>
+  local key=$1 cur=$2 nobranch=$3 g b bf res
+  [[ $key =~ ^[A-Za-z][A-Za-z0-9]*$ ]] || die "invalid setting key: $key"
+  if [[ $nobranch == true ]]; then cur=; elif [[ -z $cur ]]; then cur=$(git branch --show-current 2>/dev/null || true); fi
+  g=$(layer "$(global_file)")
+  if [[ -n $cur ]]; then bf=$(branch_file "$cur"); b=$(layer "$bf"); else b='{}'; fi
+  res=$(jq -nc --argjson g "$g" --argjson b "$b" --arg k "$key" '
+    [$b, $g] | map(.settings // {} | select(has($k)))
+    | if length == 0 then {found: false}
+      else {found: true, lines: (.[0][$k] | if type == "array" then map(tostring)
+            elif . == null then [] else [tostring] end)} end')
+  if [[ $(jq -r .found <<<"$res") == true ]]; then
+    jq -e '.lines | length > 0' <<<"$res" >/dev/null || return 3
+    jq -r '.lines[]' <<<"$res"
+  else
+    local rc=0
+    git config --get-all "pr-tend.$key" || rc=$?
+    if (( rc == 1 )); then return 3; else return "$rc"; fi
+  fi
 }
 
 init() { # <force> <branch>
   local force=$1 b=$2 src dest
   git rev-parse -q --verify "refs/heads/$b" >/dev/null || die "no such branch: $b"
-  src=$(global_file) dest=$(branch_file "$b")
+  src=$(global_file)
+  dest=$(branch_file "$b")
   [[ $force == true || ! -e $dest ]] || die "$dest exists; --force overwrites it"
   mkdir -p "$(dirname "$dest")"
   if [[ -e $src ]]; then layer "$src" >/dev/null && cp "$src" "$dest"; else echo '{}' > "$dest"; fi
@@ -73,10 +122,17 @@ verb=$1; shift
 case $verb in
   -h|--help) help ;;
   get)
+    forced=
+    if [[ ${1:-} == --harness ]]; then (( $# >= 2 )) || usage; forced=$2; shift 2; fi
     (( $# )) || usage
     step=$1
     branch=$(branch_arg "${2:-}")
-    get "$step" "$branch" ;;
+    get "$step" "$branch" "$forced" ;;
+  setting)
+    nobranch=false
+    if [[ ${1:-} == --no-branch ]]; then nobranch=true; shift; fi
+    (( $# )) || usage
+    setting "$1" "${2:-}" "$nobranch" ;;
   init)
     force=false
     if [[ ${1:-} == --force ]]; then force=true; shift; fi

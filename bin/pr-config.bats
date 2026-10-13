@@ -217,3 +217,269 @@ GLOBAL='{"harness":"claude",
   [ "$status" -ne 0 ]
   [[ "$output" == *"no such branch"* ]]
 }
+
+# ── setting: scalar and list settings, git config as the fallback ───────────
+
+@test "setting: a number from the global file" {
+  write_global '{"settings":{"stepTimeout":900}}'
+  run "$PR_CONFIG" setting stepTimeout
+  [ "$status" -eq 0 ]
+  [ "$output" = 900 ]
+}
+
+@test "setting: a string keeps its emoji and trailing space" {
+  write_global '{"settings":{"replyPrefix":"🤖 "}}'
+  out=$("$PR_CONFIG" setting replyPrefix; echo x)
+  [ "$out" = $'🤖 \nx' ]
+}
+
+@test "setting: false is a value, not unset" {
+  write_global '{"settings":{"autofix":false}}'
+  run "$PR_CONFIG" setting autofix
+  [ "$status" -eq 0 ]
+  [ "$output" = false ]
+}
+
+@test "setting: a list prints one element per line" {
+  write_global '{"settings":{"botLogin":["alice","bob"]}}'
+  run "$PR_CONFIG" setting botLogin
+  [ "$status" -eq 0 ]
+  [ "$output" = $'alice\nbob' ]
+}
+
+@test "setting: the branch file overrides the global file" {
+  write_global '{"settings":{"verify":"make test"}}'
+  write_branch feat '{"settings":{"verify":"make quick"}}'
+  run "$PR_CONFIG" setting verify
+  [ "$output" = "make quick" ]
+}
+
+@test "setting: a named branch reads that branch's file" {
+  write_global '{"settings":{"verify":"make test"}}'
+  write_branch other '{"settings":{"verify":"make other"}}'
+  run "$PR_CONFIG" setting verify other
+  [ "$output" = "make other" ]
+}
+
+@test "setting: null in the branch file unsets it and skips git config" {
+  write_global '{"settings":{"verify":"make test"}}'
+  write_branch feat '{"settings":{"verify":null}}'
+  git config pr-tend.verify "from git"
+  run "$PR_CONFIG" setting verify
+  [ "$status" -eq 3 ]
+  [ -z "$output" ]
+}
+
+@test "setting: absent from the files falls back to git config" {
+  git config pr-tend.verify "from git"
+  run "$PR_CONFIG" setting verify
+  [ "$status" -eq 0 ]
+  [ "$output" = "from git" ]
+}
+
+@test "setting: the git config fallback returns every value of a multi-valued key" {
+  git config --add pr-tend.botLogin alice
+  git config --add pr-tend.botLogin bob
+  run "$PR_CONFIG" setting botLogin
+  [ "$output" = $'alice\nbob' ]
+}
+
+@test "setting: a value in the files wins over git config" {
+  write_global '{"settings":{"verify":"from file"}}'
+  git config pr-tend.verify "from git"
+  run "$PR_CONFIG" setting verify
+  [ "$output" = "from file" ]
+}
+
+@test "setting: set nowhere exits 3 (unset) with no output" {
+  run "$PR_CONFIG" setting verify
+  [ "$status" -eq 3 ]
+  [ -z "$output" ]
+}
+
+@test "setting: works outside a repo from the global file" {
+  write_global '{"settings":{"interval":120}}'
+  cd "$TMP"
+  run "$PR_CONFIG" setting interval
+  [ "$status" -eq 0 ]
+  [ "$output" = 120 ]
+}
+
+@test "setting: works outside a repo from global git config" {
+  git config --global pr-tend.notify "echo hi"
+  cd "$TMP"
+  run "$PR_CONFIG" setting notify
+  [ "$output" = "echo hi" ]
+}
+
+@test "setting: a key that could carry git or query syntax is refused" {
+  run "$PR_CONFIG" setting 'a.b'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"setting key"* ]]
+}
+
+@test "setting: invalid JSON names the file and fails" {
+  printf '{not json\n' > "$PR_TEND_CONFIG"
+  run "$PR_CONFIG" setting verify
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"$PR_TEND_CONFIG"* ]]
+}
+
+@test "setting: no key is a usage error" {
+  run "$PR_CONFIG" setting
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Usage"* ]]
+}
+
+# ── the super binary: pinned asdf install, not the shim ─────────────────────
+
+# fake_super <dir> <label> — a super that logs its label, then runs the real one.
+fake_super() {
+  mkdir -p "$1"
+  printf '#!/usr/bin/env bash\nprintf "%s\\n" >> "$SUPER_LOG"\nexec "$REAL_SUPER" "$@"\n' "$2" > "$1/super"
+  chmod +x "$1/super"
+}
+
+pin_setup() {
+  export REAL_SUPER SUPER_LOG="$TMP/super-calls" ASDF_DATA_DIR="$TMP/asdf"
+  # A real binary, not the asdf shim: the shim breaks once HOME or ASDF_DATA_DIR move.
+  REAL_SUPER=
+  local c
+  for c in /opt/homebrew/bin/super "$HOME"/.asdf/installs/superdb/*/bin/super; do
+    [[ -x $c ]] && REAL_SUPER=$c
+  done
+  [[ -n $REAL_SUPER ]] || skip "no real super binary on this machine"
+  fake_super "$TMP/decoy" shim
+  PATH="$TMP/decoy:$PATH"
+  write_global "$GLOBAL"
+}
+
+@test "super: the pinned asdf install is used, not the PATH shim" {
+  pin_setup
+  fake_super "$ASDF_DATA_DIR/installs/superdb/9.9.9/bin" pinned
+  ASDF_SUPERDB_VERSION=9.9.9 run "$PR_CONFIG" get build
+  [ "$status" -eq 0 ]
+  [ "$(cat "$SUPER_LOG")" = pinned ]
+}
+
+@test "super: the version comes from ~/.tool-versions when the env var is unset" {
+  pin_setup
+  fake_super "$ASDF_DATA_DIR/installs/superdb/9.9.9/bin" pinned
+  mkdir -p "$TMP/home"
+  printf 'nodejs 1.0.0\nsuperdb 9.9.9\n' > "$TMP/home/.tool-versions"
+  HOME="$TMP/home" run "$PR_CONFIG" get build
+  [ "$status" -eq 0 ]
+  [ "$(cat "$SUPER_LOG")" = pinned ]
+}
+
+@test "super: the env var wins over ~/.tool-versions" {
+  pin_setup
+  fake_super "$ASDF_DATA_DIR/installs/superdb/9.9.9/bin" pinned
+  fake_super "$ASDF_DATA_DIR/installs/superdb/1.1.1/bin" wrong
+  mkdir -p "$TMP/home"
+  printf 'superdb 1.1.1\n' > "$TMP/home/.tool-versions"
+  HOME="$TMP/home" ASDF_SUPERDB_VERSION=9.9.9 run "$PR_CONFIG" get build
+  [ "$(cat "$SUPER_LOG")" = pinned ]
+}
+
+@test "super: no installed pin falls back to super on PATH" {
+  pin_setup
+  ASDF_SUPERDB_VERSION=9.9.9 run "$PR_CONFIG" get build
+  [ "$status" -eq 0 ]
+  [ "$(cat "$SUPER_LOG")" = shim ]
+}
+
+@test "super: no pin at all falls back to super on PATH" {
+  pin_setup
+  mkdir -p "$TMP/home"
+  HOME="$TMP/home" run "$PR_CONFIG" get build
+  [ "$status" -eq 0 ]
+  [ "$(cat "$SUPER_LOG")" = shim ]
+}
+
+# ── get --harness: a forced harness picks its own blocks ────────────────────
+
+@test "get --harness: uses that harness's blocks instead of the configured one" {
+  write_global "$GLOBAL"
+  run "$PR_CONFIG" get --harness pi build
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"harness":"pi","provider":"openrouter","model":"cheap","effort":"medium"}' ]
+}
+
+@test "get --harness: the step's block for that harness still applies" {
+  write_global "$GLOBAL"
+  run "$PR_CONFIG" get --harness claude address
+  [ "$output" = '{"harness":"claude","model":"strong","effort":"high"}' ]
+  run "$PR_CONFIG" get --harness pi address
+  [ "$(jq -r .model <<<"$output")" = cheaper ]
+}
+
+@test "get --harness: an empty value means not forced" {
+  write_global "$GLOBAL"
+  run "$PR_CONFIG" get --harness "" address
+  [ "$(jq -r .harness <<<"$output")" = pi ]
+}
+
+@test "get --harness: a name that could carry query syntax is refused" {
+  run "$PR_CONFIG" get --harness 'x" | values 1 | values "' build
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"harness name"* ]]
+}
+
+@test "get --harness: needs a value" {
+  run "$PR_CONFIG" get --harness
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Usage"* ]]
+}
+
+# ── setting --no-branch: no branch context (the watcher) ────────────────────
+
+@test "setting --no-branch: ignores the branch file" {
+  write_global '{"settings":{"verify":"global"}}'
+  write_branch feat '{"settings":{"verify":"branch"}}'
+  run "$PR_CONFIG" setting --no-branch verify
+  [ "$status" -eq 0 ]
+  [ "$output" = global ]
+}
+
+@test "setting --no-branch: still falls back to git config" {
+  git config pr-tend.verify "from git"
+  run "$PR_CONFIG" setting --no-branch verify
+  [ "$output" = "from git" ]
+}
+
+@test "setting --no-branch: a null in the branch file does not unset it" {
+  write_global '{"settings":{"verify":"global"}}'
+  write_branch feat '{"settings":{"verify":null}}'
+  run "$PR_CONFIG" setting --no-branch verify
+  [ "$output" = global ]
+}
+
+@test "setting --no-branch: needs a key" {
+  run "$PR_CONFIG" setting --no-branch
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Usage"* ]]
+}
+
+@test "setting: a config error exits 1, never the unset code" {
+  printf '{not json\n' > "$PR_TEND_CONFIG"
+  run "$PR_CONFIG" setting verify
+  [ "$status" -eq 1 ]
+  run "$PR_CONFIG" setting 'a.b'
+  [ "$status" -eq 1 ]
+}
+
+@test "get: an explicit branch outside a repo fails instead of using the global file alone" {
+  write_global "$GLOBAL"
+  cd "$TMP"
+  run "$PR_CONFIG" get build somebranch
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not a git repository"* ]]
+}
+
+@test "get: an unreadable global file fails before super runs" {
+  printf '{not json\n' > "$PR_TEND_CONFIG"
+  run "$PR_CONFIG" get build
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"$PR_TEND_CONFIG"* ]]
+}
