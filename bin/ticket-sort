@@ -1003,10 +1003,12 @@ ts_ask() {
       # Scoped to the pass, not the whole backlog - later passes cover
       # narrower groups, so this claims less than it looks like it does.
       b|rb)     TS_BULK=bottom
+                TS_BULK_PIVOT=$b
                 printf '%sright ticket drops below the rest of this group%s\n' \
                   "$DIM" "$RESET" >&2
                 ts_answer "$a" "$b" "$a"; return 0 ;;
       t|rt)     TS_BULK=top
+                TS_BULK_PIVOT=$b
                 printf '%sright ticket rises above the rest of this group%s\n' \
                   "$DIM" "$RESET" >&2
                 ts_answer "$a" "$b" "$b"; return 1 ;;

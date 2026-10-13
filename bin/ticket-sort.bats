@@ -606,6 +606,22 @@ bulk_fixture() {
   [ "$TS_ASKED" -eq 1 ]
 }
 
+@test "rt and rb auto-answer without a partition pivot" {
+  for answer in rt rb; do
+    bulk_fixture
+    TS_BULK_PIVOT=''
+    printf '%s\n' "$answer" > "$BATS_TEST_TMPDIR/answers"
+    exec {TS_FD}< "$BATS_TEST_TMPDIR/answers"
+    local r1 r2
+    ts_ask 0 3 2>> "$BATS_TEST_TMPDIR/ui" && r1=0 || r1=1
+    ts_ask 1 3 2>> "$BATS_TEST_TMPDIR/ui" && r2=0 || r2=1
+    exec {TS_FD}<&-
+    [ "$r1" -eq "$r2" ]
+    [ "$TS_ASKED" -eq 1 ]
+    [ "$TS_BULK_RESOLVED" -eq 1 ]
+  done
+}
+
 @test "rt is t - the right ticket rises above the rest" {
   bulk_fixture
   printf 'rt\n' > "$BATS_TEST_TMPDIR/answers"
@@ -1475,6 +1491,20 @@ EOF
     bash "$TS" place --top 2 < "$BATS_TEST_TMPDIR/tickets"
   [ "$status" -eq 0 ]
   [[ "$stderr" == *"1 question"* ]]
+}
+
+@test "place rt settles subsequent newcomers against the same cut" {
+  place_fixture
+  jq '. + [{"id":"E","title":"e"}]' "$BATS_TEST_TMPDIR/tickets" \
+    > "$BATS_TEST_TMPDIR/more-tickets"
+  printf 'rt\n' > "$BATS_TEST_TMPDIR/answers"
+  run --separate-stderr env TS_COMPARISONS_FILE="$PLACE_STORE" \
+    TS_INPUT="$BATS_TEST_TMPDIR/answers" \
+    bash "$TS" place --top 2 < "$BATS_TEST_TMPDIR/more-tickets"
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"1 question"* ]]
+  [ "$(jq -r '.["B|D"].w' "$PLACE_STORE")" = "B" ]
+  [ "$(jq -r '.["B|E"].w' "$PLACE_STORE")" = "B" ]
 }
 
 @test "place does not disturb the tickets already ranked" {
