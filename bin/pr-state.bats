@@ -539,7 +539,7 @@ note() { # note <id> <type> <login> [body] — a review or top-level comment nod
   [ "$(field .threads.owed_bot)" = 1 ]
   [ "$(field .threads.owed_human)" = 0 ]
   [ "$(field '.threads.items | length')" = 1 ]
-  [ "$(field -c '.threads.items[0]')" = '{"id":"R1","type":"review","path":null,"line":null,"outdated":null,"kind":"bot","last":"copilot"}' ]
+  [ "$(field -c '.threads.items[0]')" = '{"id":"R1","type":"review","path":null,"line":null,"outdated":null,"kind":"bot","last":"copilot","mark":"i","author":"copilot","url":null,"excerpt":"findings"}' ]
 }
 
 @test "threads: bot top-level comments are owed; humans' are out of scope" {
@@ -661,12 +661,148 @@ note() { # note <id> <type> <login> [body] — a review or top-level comment nod
   [[ "$output" == *"pr-config"* ]]
 }
 
-@test "summary: review and comment items count in the bot total" {
+@test "summary: review bodies and comments count as info, threads as blocking" {
   git switch -qc feat && commit a.txt a
-  pr_fixture feat ".reviews.nodes = [$(note R1 Bot copilot)]" ".comments.nodes = [$(note C1 Bot copilot)]"
+  pr_fixture feat ".reviewThreads.nodes = [$(thread Bot copilot Bot copilot)]" \
+    ".reviews.nodes = [$(note R1 Bot copilot)]" ".comments.nodes = [$(note C1 Bot copilot)]"
   run "$PR_STATE"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"threads: 2 bot, 0 human"* ]]
+  [[ "$output" == *" · !:1 i:2"* ]] || false
+  [[ "$output" != *"threads:"* ]]
+}
+
+@test "summary: nothing owed still shows both counts" {
+  git switch -qc feat && commit a.txt a
+  pr_fixture feat
+  run "$PR_STATE"
+  [[ "$output" == *"!:0 i:0"* ]]
+}
+
+# ── marks: ! blocks, i is to read ────────────────────────────────────────────
+
+# review <id> <type> <login> <state> [body] — a review node with a state.
+review() {
+  printf '{id: "%s", url: "https://example/pr/7#%s", state: "%s", body: "%s", author: {__typename: "%s", login: "%s"}}' \
+    "$1" "$1" "$4" "${5-findings}" "$2" "$3"
+}
+
+@test "marks: every thread is !, bot review bodies and comments are i" {
+  git switch -qc feat && commit a.txt a
+  pr_fixture feat ".reviewThreads.nodes = [$(thread User alice User alice)]" \
+    ".reviews.nodes = [$(review R1 Bot copilot COMMENTED)]" ".comments.nodes = [$(note C1 Bot copilot)]"
+  state
+  [ "$(field '[.threads.items[] | "\(.id)=\(.mark)"] | join(",")')" = 'T-alice-alice=!,R1=i,C1=i' ]
+  [ "$(field .threads.blocking)" = 1 ]
+  [ "$(field .threads.info)" = 2 ]
+}
+
+@test "marks: a bot review that requests changes is !" {
+  git switch -qc feat && commit a.txt a
+  pr_fixture feat ".reviews.nodes = [$(review R1 Bot copilot CHANGES_REQUESTED)]"
+  state
+  [ "$(field '.threads.items[0].mark')" = '!' ]
+  [ "$(field .threads.blocking)" = 1 ]
+  [ "$(field .threads.info)" = 0 ]
+}
+
+@test "marks: a human's latest review requesting changes is !; a later approval clears it" {
+  git switch -qc feat && commit a.txt a
+  pr_fixture feat ".reviews.nodes = [$(review R1 User alice CHANGES_REQUESTED 'Please split this')]"
+  state
+  [ "$(field -c '[.threads.items[] | {id, kind, mark}]')" = '[{"id":"R1","kind":"human","mark":"!"}]' ]
+  [ "$(field .threads.owed_human)" = 1 ]
+  pr_fixture feat ".reviews.nodes = [$(review R1 User alice CHANGES_REQUESTED), $(review R2 User alice APPROVED '')]"
+  state
+  [ "$(field .threads.blocking)" = 0 ]
+  [ "$(field '.threads.items | length')" = 0 ]
+}
+
+@test "marks: a later comment-only review doesn't clear a request for changes" {
+  git switch -qc feat && commit a.txt a
+  pr_fixture feat ".reviews.nodes = [$(review R1 User alice CHANGES_REQUESTED), $(review R2 User alice COMMENTED 'one more thing')]"
+  state
+  [ "$(field -c '[.threads.items[] | {id, mark}]')" = '[{"id":"R1","mark":"!"}]' ]
+}
+
+@test "items: url, author and a one-line excerpt" {
+  git switch -qc feat && commit a.txt a
+  body='<!-- linear-linkback -->\n<p><a href=\"https://linear.app/x\">DEVOPS-1 Do the thing</a></p>'
+  pr_fixture feat ".reviews.nodes = [$(review R1 Bot claude COMMENTED '\n## Review: Move monitors (pass 2)\n\nmore')]" \
+    ".comments.nodes = [{id: \"C1\", url: \"https://example/pr/7#C1\", body: \"$body\", author: {__typename: \"Bot\", login: \"linear-code\"}}]"
+  state
+  [ "$(field -c '[.threads.items[] | {author, excerpt, url}]')" = '[{"author":"claude","excerpt":"Review: Move monitors (pass 2)","url":"https://example/pr/7#R1"},{"author":"linear-code","excerpt":"DEVOPS-1 Do the thing","url":"https://example/pr/7#C1"}]' ]
+}
+
+@test "items: a thread's url and excerpt come from its first comment" {
+  git switch -qc feat && commit a.txt a
+  pr_fixture feat ".reviewThreads.nodes = [$(thread Bot copilot Bot copilot)]" \
+    '.reviewThreads.nodes[0].first.nodes[0] += {url: "https://example/pr/7#t1", body: "Rename `one`?"}'
+  state
+  [ "$(field -c '.threads.items[0] | {author, excerpt, url}')" = '{"author":"copilot","excerpt":"Rename `one`?","url":"https://example/pr/7#t1"}' ]
+}
+
+@test "items: a long excerpt is cut to 100 characters" {
+  git switch -qc feat && commit a.txt a
+  long=$(printf 'x%.0s' {1..150})
+  pr_fixture feat ".comments.nodes = [$(note C1 Bot copilot "$long")]"
+  state
+  [ "$(field '.threads.items[0].excerpt | length')" = 100 ]
+}
+
+# ── stored: what pr-tend keeps for the branch ────────────────────────────────
+
+@test "stored: handled ids and the branch's pr-tend refs" {
+  git switch -qc feat && commit a.txt a
+  git config --add branch.feat.pr-handled R1
+  git config --add branch.feat.pr-handled C1
+  git update-ref refs/pr-tend/feat/local HEAD
+  git update-ref refs/pr-tend/feat/bot HEAD
+  git update-ref refs/pr-tend/other/local HEAD
+  state
+  [ "$(field -c .stored.handled)" = '["R1","C1"]' ]
+  [ "$(field -c '.stored.refs | keys')" = '["bot","local"]' ]
+  [ "$(field .stored.refs.local)" = "$(git rev-parse HEAD)" ]
+}
+
+@test "stored: a branch with a slash keeps the rest of the ref name" {
+  git switch -qc topic/sub && commit a.txt a
+  git update-ref refs/pr-tend/topic/sub/local HEAD
+  state
+  [ "$(field -c '.stored.refs | keys')" = '["local"]' ]
+}
+
+@test "stored: nothing stored is empty, not missing" {
+  git switch -qc feat
+  state
+  [ "$(field -c .stored)" = '{"handled":[],"refs":{}}' ]
+}
+
+# ── --long: the one-liner, then one line per item ────────────────────────────
+
+@test "--long: one line per item with its mark, type, author, excerpt and url" {
+  git switch -qc feat && commit a.txt a
+  pr_fixture feat ".reviewThreads.nodes = [$(thread Bot copilot Bot copilot)]" \
+    '.reviewThreads.nodes[0].first.nodes[0] += {url: "https://example/pr/7#t1", body: "Rename it"}' \
+    ".reviews.nodes = [$(review R1 Bot claude COMMENTED 'Looks fine')]"
+  run "$PR_STATE" --long
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 3 ]
+  [[ "${lines[0]}" == feat*"!:1 i:1"* ]] || false
+  [[ "${lines[1]}" =~ ^\ +!\ +thread\ +copilot\ +file.txt:2\ +Rename\ it\ +https://example/pr/7#t1$ ]] || false
+  [[ "${lines[2]}" =~ ^\ +i\ +review\ +claude\ +Looks\ fine\ +https://example/pr/7#R1$ ]]
+}
+
+@test "--long: nothing owed is just the one-liner" {
+  git switch -qc feat && commit a.txt a
+  pr_fixture feat
+  run "$PR_STATE" --long
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 1 ]
+}
+
+@test "--long and --json together is a usage error" {
+  run "$PR_STATE" --long --json
+  [ "$status" -ne 0 ]
 }
 
 # ── O8 session ───────────────────────────────────────────────────────────────
@@ -703,7 +839,7 @@ note() { # note <id> <type> <login> [body] — a review or top-level comment nod
   [[ "$output" == feat* ]] || false
   [[ "$output" == *"#7"* ]] || false
   [[ "$output" == *"CI red"* ]] || false
-  [[ "$output" == *"1 human"* ]]
+  [[ "$output" == *"!:1 i:0"* ]]
 }
 
 @test "summary: no PR" {

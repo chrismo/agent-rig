@@ -2,7 +2,7 @@
 #
 # pr-state - where a branch's PR stands.
 #
-# Usage: pr-state [--json] [<branch>]
+# Usage: pr-state [--json | --long] [<branch>]
 #
 # Reports, for <branch> (default: the current one):
 #   pr        the branch's PR (an open one wins over closed/merged)
@@ -12,11 +12,16 @@
 #   push      local vs remote branch; whether the remote SHA is ours (reflog)
 #   ci        checks on the PR head commit
 #   review    coverage of HEAD by refs/pr-tend/<branch>/{local,bot,accepted}
-#   threads   unresolved review threads whose last word isn't ours, plus bot
-#             review bodies and top-level comments not yet marked handled
+#   threads   what's owed, marked ! (blocks: unresolved threads, reviews
+#             requesting changes) or i (to read: bot review bodies and PR
+#             comments not yet marked handled)
 #   session   pipeline enrollment, harness, session id, takeover lock
 #   fresh     false when GitHub's PR / parent-PR head differs from the local
 #             remote-tracking ref, i.e. sync and push answers need a fetch
+#   stored    what pr-tend keeps for the branch: handled ids, refs/pr-tend/<b>/*
+#
+# Output: one line by default; --long adds a line per owed item (mark, type,
+# author, excerpt, url); --json is everything.
 #
 # Read-only: never fetches or writes. Remote refs are as fresh as the last
 # fetch. One gh GraphQL call, two for a non-default parent. A gh failure is
@@ -49,11 +54,11 @@ query($owner: String!, $repo: String!, $branch: String!) {
         } } } } } }
         reviewThreads(first: 100) { nodes {
           id isResolved isOutdated path line
-          first: comments(first: 1) { nodes { author { __typename login } } }
+          first: comments(first: 1) { nodes { author { __typename login } url body } }
           last: comments(last: 1) { nodes { author { __typename login } } }
         } }
-        reviews(last: 50) { nodes { id body author { __typename login } } }
-        comments(last: 50) { nodes { id body author { __typename login } } }
+        reviews(last: 50) { nodes { id url state body author { __typename login } } }
+        comments(last: 50) { nodes { id url body author { __typename login } } }
       }
     }
   }
@@ -62,11 +67,12 @@ EOF
 
 die() { echo "pr-state: $*" >&2; exit 1; }
 
-json=false
+json=false long=false
 branch=""
 while (( $# )); do
   case $1 in
     --json) json=true ;;
+    --long) long=true ;;
     -h|--help) sed -n '3,/^$/s/^# \{0,1\}//p' "$0"; exit 0 ;;
     -*) die "unknown option: $1" ;;
     *) branch=$1 ;;
@@ -74,6 +80,7 @@ while (( $# )); do
   shift
 done
 
+! $json || ! $long || die "--json and --long don't combine"
 git rev-parse --git-dir >/dev/null 2>&1 || die "not a git repository"
 [[ -n $branch ]] || branch=$(git branch --show-current)
 [[ -n $branch ]] || die "detached HEAD; name a branch"
@@ -269,6 +276,8 @@ state=$(jq -n \
   --arg viewer "$viewer" --argjson bots "$bots" \
   --argjson ignore "$ignore" --argjson ignore_body "$ignore_body" \
   --argjson handled "$(jlist "branch.$branch.pr-handled")" \
+  --argjson refs "$(git for-each-ref --format='%(refname) %(objectname)' "refs/pr-tend/$branch/" \
+                    | jq -Rn --arg p "refs/pr-tend/$branch/" '[inputs | split(" ") | {key: (.[0] | ltrimstr($p)), value: .[1]}] | from_entries')" \
   --arg enrolled "$(cfg pr-tend)" --arg harness "$(cfg pr-harness)" \
   --arg session "$(cfg pr-session)" --arg lock "$(cfg pr-lock)" \
   --args '
@@ -276,6 +285,10 @@ state=$(jq -n \
   def unbot: sub("\\[bot\\]$"; "");
   def is_bot: .__typename == "Bot" or ((.login // "" | unbot) as $l | $l != "" and any($bots[]; unbot == $l));
   def ignored: (.login // "" | unbot) as $l | any($ignore[]; unbot == $l);
+  # First line with text, HTML tags and heading / quote markers removed.
+  def excerpt: [(. // "") | split("\n")[] | gsub("<[^>]*>"; "") | sub("^[#>\\s]+"; "") | sub("\\s+$"; "")
+                | select(. != "")][0] // "" | .[0:100];
+  def detail: {author: .author.login, url, excerpt: (.body | excerpt)};
   def ci_class:
     if .__typename == "CheckRun" then
       if .status != "COMPLETED" then "pending" else .conclusion end
@@ -291,10 +304,17 @@ state=$(jq -n \
                and (.first.nodes[0].author // {} | ignored | not))
       | {id, type: "thread", path, line, outdated: .isOutdated,
          kind: (if .first.nodes[0].author // {} | is_bot then "bot" else "human" end),
-         last: .last.nodes[0].author.login}]
+         last: .last.nodes[0].author.login, mark: "!"} + (.first.nodes[0] // {} | detail)]
      + [($pr.reviews.nodes // [] | .[] | {n: ., type: "review"}), ($pr.comments.nodes // [] | .[] | {n: ., type: "comment"})
         | select((.n.author // {} | is_bot and (ignored | not)) and (.n.body // "" | test("\\S") and (. as $b | any($ignore_body[]; . as $re | $b | test($re)) | not)) and (.n.id | IN($handled[]) | not))
-        | {id: .n.id, type, path: null, line: null, outdated: null, kind: "bot", last: .n.author.login}]) as $owed
+        | {id: .n.id, type, path: null, line: null, outdated: null, kind: "bot", last: .n.author.login,
+           mark: (if .n.state == "CHANGES_REQUESTED" then "!" else "i" end)} + (.n | detail)]
+     # A reviewer verdict is their latest approving, requesting or dismissed review.
+     + [$pr.reviews.nodes // [] | map(select((.author // {} | is_bot or ignored | not)
+                                             and (.state | IN("APPROVED", "CHANGES_REQUESTED", "DISMISSED"))))
+        | group_by(.author.login)[] | last | select(.state == "CHANGES_REQUESTED")
+        | {id, type: "review", path: null, line: null, outdated: null, kind: "human", last: .author.login,
+           mark: "!"} + detail]) as $owed
   | [$owed[] | select(.kind == "bot")] as $ob
   | {
       branch: $branch, head: $head,
@@ -321,9 +341,12 @@ state=$(jq -n \
                 outdated: (if $gh_ok then [$owed[] | select(.outdated)] | length else null end),
                 by_type: (if $gh_ok then reduce $ob[] as $i ({thread: 0, review: 0, comment: 0}; .[$i.type] += 1)
                           else null end),
+                blocking: (if $gh_ok then [$owed[] | select(.mark == "!")] | length else null end),
+                info: (if $gh_ok then [$owed[] | select(.mark == "i")] | length else null end),
                 items: $owed},
       session: {enrolled: ($enrolled == "true"), harness: ($harness | nn), id: ($session | nn),
                 locked: ($lock != "")},
+      stored: {handled: $handled, refs: $refs},
       errors: $ARGS.positional
     }' "${errors[@]}")
 
@@ -351,13 +374,22 @@ jq -r '
      end),
     (if .pr == null then empty
      else "CI \(.ci.verdict)\(if .ci.failing != [] then " (\(.ci.failing | join(", ")))" else "" end)\(if .ci.for_head == false then " on old head" else "" end)" end),
-    (if (.threads.owed_bot // 0) + (.threads.owed_human // 0) > 0 then
-       "threads: \(.threads.owed_bot) bot, \(.threads.owed_human) human\(
-         [.threads.by_type // {} | to_entries[] | select(.key != "thread" and .value > 0) | "\(.value) \(.key)"]
-         | if . == [] then "" else " (incl. \(join(", ")))" end)" else empty end),
+    (if .pr == null or .threads.blocking == null then empty
+     else "!:\(.threads.blocking) i:\(.threads.info)" end),
     (.review | to_entries[] | select(.value != null and .value.status != "none")
      | "\(.key) \({covered: "✓", "rewritten-same": "✓", uncovered: "+\(.value.uncovered)", "rewritten-changed": "✗", unknown: "?"}[.value.status])"),
     (if .session.locked then "locked" else empty end),
     (if .fresh == false then "⚠ stale: fetch" else empty end),
     (if .errors != [] then "⚠ \(.errors | length) error(s)" else empty end)
   ] | join(" · ")' <<<"$state"
+
+$long || exit 0
+jq -r '
+  def pad($n): . + ([range(length; $n)] | map(" ") | join(""));
+  [.threads.items[] | {mark, type, author: (.author // .last // ""),
+                       text: ([(if .path then "\(.path):\(.line)" else empty end), .excerpt // ""]
+                              | map(select(. != "")) | join("  ")),
+                       url: (.url // "")}] as $it
+  | ($it | map(.type | length) | max) as $tw | ($it | map(.author | length) | max) as $aw
+  | ($it | map(.text | length) | max) as $xw
+  | $it[] | "  \(.mark)  \(.type | pad($tw))  \(.author | pad($aw))  \(.text | pad($xw))  \(.url)" | sub("\\s+$"; "")' <<<"$state"

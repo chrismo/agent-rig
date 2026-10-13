@@ -19,9 +19,11 @@ a glance where each one stands:
 pipeline and the namespace for its state: git config `pr-tend.*` and
 `branch.<b>.pr-tend`, `refs/pr-tend/`, `~/.config/pr-tend/`,
 `~/.local/state/pr-tend/`, `<git dir>/pr-tend/`, `lib/pr-tend.sh`. The commands
-stay `pr-state`, `pr-act`, `pr-watch`, `pr-config`. Candidates if it's renamed:
-`sheepdog` (favourite), `tug`. Renaming means a pass over every name above,
-plus migrating existing state.
+stay `pr-state`, `pr-act`, `pr-watch`, `pr-config`. Rename candidates: `sheepdog` (favourite), `tug`, **`pr-op`** (*prop*), and
+**`pr-onto`** (*pronto*). The last two keep the `pr-` prefix while reading as
+short familiar words; `pr-op` suggests a PR operation, while `pr-onto` suggests
+getting a PR moving. Renaming means a pass over every name above, plus migrating
+existing state.
 
 ## Principles
 
@@ -584,6 +586,20 @@ not built; a pass only observes and reports:
   until its node id is in multi-valued `branch.<name>.pr-handled` (`pr-act
   address` adds it). Human top-level comments are not tracked.
   `settings.botLogin` is a list and matches with or without `[bot]`.
+- Marks in `pr-state` (2026-10-13). Every owed item is marked `!` (blocks) or
+  `i` (to read), and the one-liner shows `!:<n> i:<n>`.
+  - **`!`:** unresolved threads, a bot review in state `CHANGES_REQUESTED`, and
+    a person's latest `APPROVED` / `CHANGES_REQUESTED` / `DISMISSED` review
+    when it requests changes. A later `COMMENTED` review doesn't clear it,
+    matching GitHub.
+  - **`i`:** bot review bodies and PR comments not yet in `pr-handled`.
+  - **Why the split:** those have no "resolved" state, so they were counted as
+    owed alongside real work. The verdict a review bot writes in prose (Merge
+    Simpson always submits as `COMMENT`) isn't parsed.
+  - **Output:** `--json` items carry `mark`, `author`, `url`, and an `excerpt`
+    (first line with text, tags stripped, 100 characters). A `stored` block
+    has the `pr-handled` ids and `refs/pr-tend/<b>/*`. `--long` adds one line
+    per item.
 
 Rejected alternatives: `/loop` per session (tokens per idle wake, dies with the
 session); built-in PR subscriptions (Claude-only, untested); git hooks (blind to
@@ -786,6 +802,10 @@ short-lived, so it can't own children like their daemons do. Plan:
 - **Named harness profiles?** Reusable profiles (harness, provider, model,
   effort, args) that steps reference by name, in the config files. Not built;
   today a step names a harness and its block.
+- **CI as a glyph on the one-liner** (tabled 2026-10-13): `✅` / `🔴` instead of
+  `CI green` / `CI red`, for agent status lines.
+- **Clearing `i` items without a reply** (`pr-act ack`?): held until `--long`
+  has been used for a while.
 - **TODO: move `pr-state`, `pr-act` and `pr-watch` from `jq` to SuperDB.**
   Decided 2026-10-13: SuperDB, always. `pr-config` is done. The rest still shell
   out to `jq`, including the `CLASSIFY` filter and the GraphQL shaping. Not part
