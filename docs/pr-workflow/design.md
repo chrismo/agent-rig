@@ -769,6 +769,33 @@ short-lived, so it can't own children like their daemons do. Plan:
 
 ## Known issues
 
+- **BUG: NEXT and pr-watch's ✅ say "ready to merge" when GitHub blocks the
+  merge** (found 2026-10-13, PR dscout/dscout#30055). GitHub reported
+  `reviewDecision: REVIEW_REQUIRED` and `mergeStateStatus: BLOCKED` (review
+  requested from a human, no approval yet). `pr-state` printed `NEXT  you
+  ready to merge`. Causes:
+  - `pr-state` fetches only `mergeable`, which means "no conflicts". It never
+    asks for `reviewDecision`, `mergeStateStatus` or requested reviewers.
+  - In `lib/pr-next.sh`, `ready` is what's left when no other step applies,
+    not something GitHub confirmed. pr-watch's `CLASSIFY` falls through to ✅
+    the same way.
+
+  Fix:
+  1. `pr-state` adds `reviewDecision`, `mergeStateStatus` and
+     `reviewRequests` to its query, exposed under `.pr`.
+  2. `ready` only when `mergeStateStatus` allows a merge: `CLEAN`, and probably
+     `UNSTABLE` / `HAS_HOOKS`. Otherwise:
+     - `REVIEW_REQUIRED` → `wait  waiting on review from <who>`. A "nudge them"
+       step after N hours could come later.
+     - other `BLOCKED` → `you  GitHub says blocked → gh pr view --web`
+     - `UNKNOWN` → `wait`, never ready
+  3. pr-watch's ✅ follows the same rule.
+
+  Related, untested: `mergeStateStatus: BEHIND` may be the evidence that
+  makes "behind the default branch" a real step, on repos that require
+  up-to-date branches. #30055 was 50 behind main and still reported `BLOCKED`.
+  So either dscout doesn't require it, or `BLOCKED` takes precedence. Check on
+  a real PR before relying on it.
 - **`pr-state`: a clone of your own fork may not find the PR (untested).** If
   a repo is cloned from your own fork, gh may query the fork instead of the
   upstream project, so the PR wouldn't be found.
