@@ -15,7 +15,7 @@
 #
 # Glyphs: ❌ needs chrismo   ⚠️ state unknown   🔧 work for later   ⏳ CI running
 #         ✅ ready to merge  🏁 merged          🚫 closed
-# Notified: CI red, restack conflict, human threads, foreign push, merged,
+# Notified: CI red, restack conflict, human items, foreign push, merged,
 # ready to merge.
 #
 # Env:    PR_TEND_STATE_DIR (~/.local/state/pr-tend), STATUS_DIR (~/.claude/tab-status)
@@ -37,23 +37,18 @@ LAUNCH_AGENTS=${PR_WATCH_LAUNCH_AGENTS:-$HOME/Library/LaunchAgents}
 TIMEOUT=${PR_WATCH_TIMEOUT:-120}
 
 read -r -d '' CLASSIFY <<'EOF' || true
-[ (if .ci.verdict == "red" then {key: "ci-red", msg: "CI red: \(.ci.failing | join(", "))"} else empty end),
-  (if .sync.conflict == true then {key: "conflict", msg: "restack onto \(.sync.target) would conflict"} else empty end),
-  (if (.threads.owed_human // 0) > 0 then {key: "human-threads", msg: "\(.threads.owed_human) human thread(s) owed a reply"} else empty end),
-  (if .push.remote_ours == false and (.push.behind // 0) > 0 then {key: "foreign-push", msg: "remote has commits that aren't ours"} else empty end)
-] as $red
-| if .pr.state == "MERGED" then {glyph: "🏁", reasons: [{key: "merged", msg: "merged"}]}
-  elif .pr.state == "CLOSED" then {glyph: "🚫", reasons: []}
+if (.next | type) != "array" or .next == [] then {glyph: "⚠️", reasons: [], note: "pr-state gave no next steps"}
+else [.next[].key] as $k
+| [.next[] | select(.key | IN("ci-red", "conflict", "human", "foreign")) | {key, msg: .say}] as $red
+| if $k == ["merged"] then {glyph: "🏁", reasons: [{key: "merged", msg: .next[0].say}]}
+  elif $k == ["closed"] then {glyph: "🚫", reasons: []}
   elif $red != [] then {glyph: "❌", reasons: $red}
-  elif .errors != [] or .fresh != true then {glyph: "⚠️", reasons: []}
-  elif .pr == null or (.pr.draft // false)
-       or (.sync.up_to_date == false and (.sync.target != .sync.default or .parent.merged == true))
-       or (.threads.owed_bot // 0) > 0 or (.push.ahead // 0) > 0 or .ci.verdict == "inconclusive"
-       or any(.review[]; .status | IN("uncovered", "rewritten-changed", "unknown"))
-    then {glyph: "🔧", reasons: []}
-  elif .ci.verdict == "pending" or .ci.for_head == false then {glyph: "⏳", reasons: []}
-  else {glyph: "✅", reasons: [{key: "ready", msg: "ready to merge"}]}
+  elif any($k[]; IN("errors", "stale")) then {glyph: "⚠️", reasons: []}
+  elif $k == ["ready"] then {glyph: "✅", reasons: [{key: "ready", msg: .next[0].say}]}
+  elif $k == ["ci-wait"] then {glyph: "⏳", reasons: []}
+  else {glyph: "🔧", reasons: []}
   end
+end
 EOF
 
 # Notifier stdout would land in the pass record (check runs inside $(...)).
@@ -106,7 +101,7 @@ check() {
     && mv "$state_file.tmp" "$state_file"
 
   write_glyph "$wt" "$b" "$glyph"
-  printf '%s\t%s\t%s\t%s\n' "$name" "$b" "$glyph" "$(jq -r '[.reasons[].msg] | join("; ")' <<<"$cls")"
+  printf '%s\t%s\t%s\t%s\n' "$name" "$b" "$glyph" "$(jq -r '[.reasons[].msg, (.note // empty)] | join("; ")' <<<"$cls")"
 }
 
 run_pass() {

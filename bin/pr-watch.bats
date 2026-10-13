@@ -54,6 +54,7 @@ register() {
 }
 
 # ps_fixture <branch> [jq-assignments...] — pr-state's JSON. Default: ready to merge.
+# .next comes from the real lib/pr-next.sh, as in pr-state, unless an assignment sets it.
 ps_fixture() {
   local b=$1; shift
   local j
@@ -65,10 +66,14 @@ ps_fixture() {
     fresh: true, stale: [],
     ci: {verdict: "green", failing: [], pending: [], for_head: true},
     review: {local: {status: "none"}, bot: {status: "none"}, accepted: {status: "none"}},
-    threads: {owed_bot: 0, owed_human: 0, outdated: 0, items: []},
+    threads: {owed_bot: 0, owed_human: 0, outdated: 0, blocking: 0, info: 0, items: []},
     session: {enrolled: true, locked: false}, errors: []}')
   local a
   for a; do j=$(jq "$a" <<<"$j"); done
+  if [[ $(jq 'has("next")' <<<"$j") == false ]]; then
+    j=$(jq --argjson n "$(printf '%s\n' "$j" | bash5 -c 'source "$1/../lib/pr-config.sh" && source "$1/../lib/pr-next.sh" && prn_next origin' _ "$BATS_TEST_DIRNAME")" \
+          '. + {next: $n}' <<<"$j")
+  fi
   printf '%s\n' "$j" > "$PS_FIXTURES/${b//\//__}.json"
 }
 
@@ -153,7 +158,7 @@ notified() { cat "$PS_FIXTURES/notified" 2>/dev/null || true; }
   [ ! -e "$STATUS_DIR/repo.pr" ]
 }
 
-@test "glyph: CI red, conflict, human threads, foreign push are ❌" {
+@test "glyph: CI red, conflict, human items, foreign push are ❌" {
   local a
   for a in '.ci.verdict = "red"' '.sync.up_to_date = false | .sync.conflict = true' \
            '.threads.owed_human = 1' '.push.behind = 1 | .push.remote_ours = false'; do
@@ -222,6 +227,29 @@ notified() { cat "$PS_FIXTURES/notified" 2>/dev/null || true; }
   [ "$(glyph repo)" = "✅" ]
 }
 
+@test "glyph: follows pr-state's next steps, not its raw fields" {
+  ps_fixture feat '.next = [{key: "ci-wait", who: "wait", say: "CI running", cmd: null}]'
+  pass
+  [ "$(glyph repo)" = "⏳" ]
+  ps_fixture feat '.next = [{key: "bot", who: "agent", say: "address 1 bot item", cmd: null}]'
+  pass
+  [ "$(glyph repo)" = "🔧" ]
+}
+
+@test "glyph: info-only bot items, waiting on chrismo's read, are 🔧" {
+  ps_fixture feat '.threads.owed_bot = 1 | .threads.info = 1'
+  pass
+  [ "$(glyph repo)" = "🔧" ]
+  [ -z "$(notified)" ]
+}
+
+@test "glyph: pr-state output with no next steps is ⚠️" {
+  ps_fixture feat '.next = null'
+  pass
+  [ "$(glyph repo)" = "⚠️" ]
+  grep -q "feat.*no next steps" "$PR_TEND_STATE_DIR/last-pass"
+}
+
 @test "glyph: a draft is never ready" {
   ps_fixture feat '.pr.draft = true'
   pass
@@ -244,7 +272,7 @@ notified() { cat "$PS_FIXTURES/notified" 2>/dev/null || true; }
   grep -q "feat.*unparseable" "$PR_TEND_STATE_DIR/last-pass" || false
   ps_fixture feat '.ci.verdict = "red" | .ci.failing = ["lint"]'
   pass
-  [ "$(notified)" = "repo feat|CI red: lint" ]
+  [ "$(notified)" = "repo feat|fix CI: lint" ]
 }
 
 @test "pr-state stderr on success doesn't corrupt its JSON" {
@@ -292,7 +320,7 @@ SH
 @test "notify: CI red names the failing checks" {
   ps_fixture feat '.ci.verdict = "red" | .ci.failing = ["lint", "test"]'
   pass
-  [ "$(notified)" = "repo feat|CI red: lint, test" ]
+  [ "$(notified)" = "repo feat|fix CI: lint, test" ]
 }
 
 @test "notify: a reason that clears and comes back notifies again" {
@@ -302,7 +330,7 @@ SH
   pass
   ps_fixture feat '.ci.verdict = "red" | .ci.failing = ["lint"]'
   pass
-  [ "$(notified | grep -c 'CI red')" = 2 ]
+  [ "$(notified | grep -c 'fix CI')" = 2 ]
 }
 
 @test "notify: agent-later work and pending CI stay quiet" {
@@ -311,7 +339,7 @@ SH
   [ -z "$(notified)" ]
 }
 
-@test "notify: human threads, conflict, foreign push, merged" {
+@test "notify: human items, conflict, foreign push, merged" {
   ps_fixture feat '.threads.owed_human = 2'
   pass
   ps_fixture feat '.sync.up_to_date = false | .sync.conflict = true'
@@ -321,10 +349,10 @@ SH
   ps_fixture feat '.pr.state = "MERGED"'
   pass
   run notified
-  [ "${lines[0]}" = "repo feat|2 human thread(s) owed a reply" ]
-  [ "${lines[1]}" = "repo feat|restack onto main would conflict" ]
-  [ "${lines[2]}" = "repo feat|remote has commits that aren't ours" ]
-  [ "${lines[3]}" = "repo feat|merged" ]
+  [ "${lines[0]}" = "repo feat|reply to 2 human items" ]
+  [ "${lines[1]}" = "repo feat|restack onto main conflicts: resolve it" ]
+  [ "${lines[2]}" = "repo feat|origin/feat has 1 commit that isn't yours" ]
+  [ "${lines[3]}" = "repo feat|merged: remove this worktree" ]
 }
 
 @test "notify: a notifier that reads stdin doesn't swallow later reasons" {
@@ -364,7 +392,7 @@ SH
   pass
   run "$PR_WATCH" status
   [ "$status" -eq 0 ]
-  [[ "$output" == *"repo"*"feat"*"❌"*"CI red: lint"* ]] || false
+  [[ "$output" == *"repo"*"feat"*"❌"*"fix CI: lint"* ]] || false
   [[ "$output" != *$'\t'* ]]
 }
 

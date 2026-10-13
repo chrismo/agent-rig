@@ -169,7 +169,7 @@ address() {
   [[ -z $line ]] || die "$line"
   owed=$(jq -c '[.threads.items[] | select(.kind == "bot")]' <<<"$state")
   if [[ $owed == '[]' ]]; then
-    echo "nothing to address on $b ($(jq -r '.threads.owed_human // 0' <<<"$state") human thread(s) are chrismo's)"
+    echo "nothing to address on $b ($(jq -r '.threads.owed_human // 0' <<<"$state") human item(s) are chrismo's)"
     return
   fi
   if ! $force && [[ $(jq '[.[] | .soft // empty] | length' <<<"$gate") -gt 0 ]]; then

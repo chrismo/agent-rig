@@ -570,12 +570,20 @@ not built; a pass only observes and reports:
   per enrolled branch. `pr-state` stays read-only, with no `--fetch` option.
 - Glyph per worktree in `~/.claude/tab-status/<worktree>.pr` as
   `<branch>\t<glyph>`; `tab-status` appends it to the title only while the
-  worktree is still on that branch. ❌ needs chrismo · ⚠️ unknown · 🔧 work for
-  later (behind a stacked parent, unpushed, bot threads, review not covered, no PR) · ⏳ CI
-  running · ✅ ready · 🏁 merged · 🚫 closed.
+  worktree is still on that branch.
+  - **The glyph is read from pr-state's `.next` steps** (`lib/pr-next.sh`), not
+    from the raw fields, so the tab and `NEXT` can't disagree (2026-10-13).
+  - ❌ needs chrismo: any `ci-red`, `conflict`, `human` or `foreign` step.
+  - ⚠️ unknown: an `errors` or `stale` step, or no steps at all.
+  - ⏳ CI running: `ci-wait` is the only step.
+  - ✅ ready: `ready` is the only step.
+  - 🏁 merged · 🚫 closed.
+  - 🔧 work for later: anything else (restack onto a stacked parent, push, bot
+    items, info items to read and ack, open a PR, draft, review not covered,
+    cancelled CI).
 - Notifications (N2, macOS by default, `settings.notify` overrides) only for a
-  reason that wasn't there last pass (N3): CI red, restack conflict, human
-  threads, foreign push, merged, ready to merge.
+  step that wasn't there last pass (N3), keyed by step and worded by its `say`:
+  the ❌ steps, merged, ready to merge.
 - `pr-watch status` prints the last pass. `pr-watch install` / `uninstall`
   manage the launchd job, opt-in per machine; interval `settings.interval`,
   default 300 s.

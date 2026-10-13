@@ -181,13 +181,13 @@ remote_feat() { git -C "$TMP/origin.git" rev-parse feat; }
   [ ! -f "$FX/claude.args" ]
 }
 
-@test "human threads are not handed to the agent" {
+@test "human items are not handed to the agent" {
   state_fixture '.threads.owed_bot = 0 | .threads.owed_human = 1
                  | .threads.items = [{id: "H1", type: "thread", kind: "human", path: "x", line: 1, outdated: false, last: "pal"}]'
   run "$PR_ACT" address
   [ "$status" -eq 0 ]
   [[ "$output" == *"nothing to address"* ]] || false
-  [[ "$output" == *"1 human"* ]]
+  [[ "$output" == *"(1 human item(s) are chrismo's)"* ]]
 }
 
 @test "unpushed and locked: every reason listed, nothing run" {
