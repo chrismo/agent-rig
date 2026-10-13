@@ -636,6 +636,10 @@ short-lived, so it can't own children like their daemons do. Plan:
 - N2 channel beyond the tab glyph (PushNotification? `say`?)
 - Agent-reply marking, if/when agents reply on human threads (deferred)
 - **Fork per step** — spike done, both harnesses fork identically; now just a decision
+- **TODO: SuperDB instead of `jq`?** `pr-state`, `pr-act` and `pr-watch` shell
+  out to `jq` (including the `CLASSIFY` filter); other scripts in this repo use
+  `super`. Decide whether to move the PR scripts over, or document why not.
+  Not part of the restack work.
 
 ## Prior art — summary
 
