@@ -174,12 +174,22 @@ GLOBAL='{"harness":"claude",
   [ "$(get_field build model)" = strong ]
 }
 
-@test "init: copies the global file to the branch file and says where" {
+@test "init: writes an empty overrides file and says where" {
   write_global "$GLOBAL"
   run "$PR_CONFIG" init
   [ "$status" -eq 0 ]
-  cmp "$PR_TEND_CONFIG" "$(branch_file feat)"
   [ "$output" = "wrote $(branch_file feat)" ]
+  [ "$(jq -cS . "$(branch_file feat)")" = '{"harnesses":{"claude":{},"pi":{}},"settings":{},"steps":{}}' ]
+  [ "$(get_field build model)" = strong ]
+}
+
+@test "init: later edits to the global file still reach the branch" {
+  write_global "$GLOBAL"
+  "$PR_CONFIG" init
+  "$PR_CONFIG" set --global harnesses.claude.model newer
+  "$PR_CONFIG" set --global settings.verify "make check"
+  [ "$("$PR_CONFIG" get harnesses.claude.model)" = newer ]
+  [ "$("$PR_CONFIG" get settings.verify)" = "make check" ]
 }
 
 @test "init: from a linked worktree, names the shared file in the main repo" {
@@ -214,14 +224,14 @@ GLOBAL='{"harness":"claude",
   write_branch feat '{"harness":"pi"}'
   run "$PR_CONFIG" init --force
   [ "$status" -eq 0 ]
-  cmp "$PR_TEND_CONFIG" "$(branch_file feat)"
+  [ "$(jq -cS . "$(branch_file feat)")" = '{"harnesses":{"claude":{},"pi":{}},"settings":{},"steps":{}}' ]
 }
 
-@test "init: no global file is refused and points at init --global" {
+@test "init: needs no global file" {
   run "$PR_CONFIG" init
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"init --global"* ]]
-  [ ! -e "$(branch_file feat)" ]
+  [ "$status" -eq 0 ]
+  [ -f "$(branch_file feat)" ]
+  [ "$("$PR_CONFIG" get settings.remote)" = origin ]
 }
 
 @test "init --global: writes a skeleton that resolves to the defaults" {

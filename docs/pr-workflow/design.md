@@ -343,13 +343,13 @@ plus the `pr-tend.repo` registry.
 - `pr-config unset <path>` removes a key so it inherits again.
 - `set` on a branch with no file creates one holding only that key.
 
-**Init is a copy.** Starting (or enrolling) a branch copies the global file to
-the branch file. Per-PR differences are overrides written into that copy,
-because they're common: some PRs are cheap and easy, others thorough and need a
-frontier model. (No command flags are designed for this yet.) The merge works
-whether the branch file is a full copy or only overrides. With a full copy,
-later edits to the global file don't reach existing branches, and no way to
-refresh a branch from global is specified.
+**A branch file holds only overrides** (2026-10-13; it was a full copy).
+`pr-config init` writes empty blocks to fill in, and `set` creates the file
+when needed. Per-PR differences are common: some PRs are cheap and easy, others
+thorough and need a frontier model. (No command flags are designed for this
+yet.) A full copy froze the branch: later edits to the global file, such as a
+new `botIgnoreBody`, never reached it. Branch files made by the old `init` are
+still full copies; `pr-config init --force` replaces one with empty blocks.
 
 **SuperDB notes (0.3.0, observed 2026-10-13):**
 - **No here-strings:** `super` reads nothing from `<<<`, so input is always

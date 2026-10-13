@@ -239,15 +239,13 @@ prc_init_global() { # <force>
   echo "wrote $dest"
 }
 
-prc_init() { # <force> <branch>
-  local force=$1 b=$2 src dest
+# prc_init <force> <branch>: a branch file of empty blocks; it holds only overrides.
+prc_init() {
+  local force=$1 b=$2 dest
   git rev-parse -q --verify "refs/heads/$b" >/dev/null || { prc_err "no such branch: $b"; return; }
-  src=$(prc_global_file)
-  [[ -e $src ]] || { prc_err "no global file at $src; run pr-config init --global first"; return; }
   dest=$(prc_branch_file "$b") || return
   [[ $force == true || ! -e $dest ]] || { prc_err "$dest exists; --force overwrites it"; return; }
   mkdir -p "$(dirname "$dest")" || return
-  prc_layer "$src" >/dev/null || return
-  cp "$src" "$dest" || return
+  printf '%s\n' "$PRC_SKELETON" | prc_super -i json -J -c 'drop harness' - > "$dest" || return
   echo "wrote $dest"
 }
