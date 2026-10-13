@@ -57,7 +57,7 @@ a glance where each one stands:
 | Scope check | **Yes.** The task text is recorded at start (`branch.<name>.pr-task`) and passed to the local reviewer as `PR_TEND_TASK`, so it can flag work outside the task (Spotify's top judge veto). |
 | Per-step turn cap | **No.** Neither CLI shows a turn-cap flag (`--help`, 2026-10-11); `--max-budget-usd` bounds Claude steps. |
 | Verify before reply | **No, for now.** Revisit if we move fix steps to cheaper models (OpenHands-style per-thread "was it incorporated?" check). |
-| Handed-off feedback | Multi-valued `branch.<name>.pr-handed <comment-id>` (git config `--add`). Mostly a guard for review bodies and in-flight steps; threads already dedup via "last speaker is us" (O7). |
+| Handed-off feedback | Multi-valued `branch.<name>.pr-handled <comment-id>` (git config `--add`). Mostly a guard for review bodies and in-flight steps; threads already dedup via "last speaker is us" (O7). |
 | Step prompts | Lookup chain, nearest wins: `<scope>/.pr-tend/<step>.md` walking up to the repo root → agent-rig defaults. `scope` = `branch.<name>.pr-scope`, set by `pr-act start --scope <app-dir>` (monorepo: per app); default repo root. |
 | Build vs adopt | Self-built. AO evaluated (below), not adopted; round 2 (2026-10-11) found nothing to adopt wholesale — see "Prior art, round 2". |
 | Who drives | **Pipeline drives, reaffirmed** after round 2. Symphony / Gas Town (agent drives the PR loop from prompts) are the opposite camp; Sortie / Archon match us. Keeps tokens down; stochastic only where judgment is needed. |
@@ -200,7 +200,7 @@ repeat offender means the step-contract prompt needs tightening.
 | Local reviewer script | `git config [--global] pr-tend.localReview` |
 | Verify / autofix commands | `git config [--global] pr-tend.verify`, `pr-tend.autofix` (repo-level for a monorepo app: scope lookup below) |
 | Task text | `git config branch.<name>.pr-task` |
-| Comment IDs handed to the agent | `git config --add branch.<name>.pr-handed <id>` |
+| Comment IDs handed to the agent | `git config --add branch.<name>.pr-handled <id>` |
 | Prompt scope (monorepo app dir) | `git config branch.<name>.pr-scope <path>` |
 
 - Refs (outside `refs/worktree/`) and repo config are **shared across
@@ -377,7 +377,7 @@ git config [--global] pr-tend.localReview <command>
 Any executable. What it does inside (prompt, model, emulating the backend bot
 or not) is out of scope; agent-rig defines only the contract, and ships a
 default `bin/pr-review-local` (thin `claude -p` wrapper + prompt file). It
-invokes Claude through `lib/pr-harness.sh`, so it gets the same auth handling
+invokes Claude through `harness_run` in `lib/pr-tend.sh`, so it gets the same auth handling
 (unset `ANTHROPIC_API_KEY`, never `--bare`).
 
 **Contract:**
@@ -444,6 +444,13 @@ not built; a pass only observes and reports:
 - `pr-watch status` prints the last pass. `pr-watch install` / `uninstall`
   manage the launchd job, opt-in per machine; interval `pr-tend.interval`,
   default 300 s.
+- O7 in `pr-state` (2026-10-12): besides inline threads, bot **review bodies**
+  (non-blank) and bot **top-level PR comments** are owed items, typed
+  `thread` / `review` / `comment` in `.threads.items`, with per-type counts in
+  `.threads.by_type`; all count toward `owed_bot`. A review/comment stays owed
+  until its node id is in multi-valued `branch.<name>.pr-handled` (`pr-act
+  address` adds it). Human top-level comments are not tracked.
+  `pr-tend.botLogin` is multi-valued and matches with or without `[bot]`.
 
 Rejected alternatives: `/loop` per session (tokens per idle wake, dies with the
 session); built-in PR subscriptions (Claude-only, untested); git hooks (blind to
@@ -471,7 +478,7 @@ wanted:
 |---|---|---|
 | `bin/pr-state` | O1–O8 → JSON + one-line summary | bats, fake `gh` + git fixtures |
 | `bin/pr-act <verb>` | A0–A9 | bats; real git fixtures for A2 (squash case!) and reconciliation (reflog ownership) |
-| `lib/pr-harness.sh` | adapter: claude / pi | bats, stub `claude` / `pi` |
+| `lib/pr-tend.sh` | `harness_run` (adapter: claude / pi) + `with_timeout` | bats, stub `claude` / `pi` |
 | step-contract prompts | one per J step, versioned in the repo | — |
 | `bin/pr-review-local` | default reviewer script | bats for the contract, stub `claude` |
 | `pr-act verify` / `autofix` | run configured commands, trim output | bats, stub commands |
@@ -480,14 +487,79 @@ wanted:
 
 ## Suggested build order
 
-1. `pr-state` (read-only; useful on its own immediately)
-2. `pr-act restack` + `push` incl. reconciliation (squash fixtures are the core risk)
-3. `pr-act verify` + `bin/pr-review-local` + `pr-act review` — useful standalone
-4. harness adapter + spike tests (below)
-5. `pr-act start` + implement / fix steps
-6. bot trigger, retarget, describe, address steps
-7. `pr-watch` + launchd
-8. glyph / notifications; `pr-act attach`
+**Manual first (decided 2026-10-12).** Every step is a `pr-act` verb chrismo
+runs by hand; the watcher only starts dispatching them once each one behaves.
+Each verb checks its own preconditions with `pr-state` and refuses with the
+reasons (`--force` overrides the soft ones), so those checks *are* the state
+machine's transition guards: the loop later calls the verb and the verb
+decides. Verbs are written headless from the start (structured outcome, no
+prompts, exit codes) so the watcher can call them unchanged.
+
+1. `pr-state` — done
+2. `pr-watch` observe-only + glyph + notifications — done
+3. `pr-act address` (bot feedback) + harness adapter — done, see below
+4. `pr-act restack` + `push` incl. reconciliation (squash fixtures are the core risk)
+5. `pr-act verify` / `check` + `bin/pr-review-local`
+6. bot trigger, retarget, describe
+7. the loop: watcher dispatches verbs (below, "Process supervision")
+8. `pr-act start` + implement; `pr-act attach`
+
+## `pr-act address` — built 2026-10-12
+
+`pr-act address [--force] [--dry-run] [--harness claude|pi] [<branch>]`:
+
+1. Find the worktree that has the branch checked out (refuse if none or
+   dirty), fetch, run `pr-state --json`.
+2. Gate. Hard (never forced): no PR, PR not open, GitHub unreadable. Soft
+   (`--force`): taken over, behind / conflicting parent, unpushed, remote
+   behind or diverged. Warn: CI still running. Nothing owed → exit 0.
+3. Fetch the owed bot items' text with one `nodes(ids:)` query; normalize to
+   `{id, type, path, line, outdated, conversation}`.
+4. Agent step: resume `branch.<b>.pr-session` or mint one (stored with
+   `pr-harness` after a successful run), run under `pr-tend.stepTimeout`
+   (1800 s). Returns `{outcome, commit_message, summary, items: [{id, action,
+   reply}]}`, action ∈ fixed / reply / pushback / ask. Claude: `--json-schema`,
+   result in `structured_output`, edit tools only (commit, push, `gh` denied).
+   pi: `--tools read,edit,write`, result parsed from a final ```json block.
+5. Pipeline commits the edits (`gave-up` → nothing committed or posted), runs
+   `pr-tend.verify` (fail → commit kept, nothing pushed), prints the plan.
+   `--dry-run` stops here.
+6. Push, then: threads get a reply (prefix `pr-tend.replyPrefix`, default
+   "🤖 "); fixed / reply resolve it, pushback stays open. Review bodies and PR
+   comments get one combined PR comment and are added to
+   `branch.<b>.pr-handled`. `ask` items (and any the agent skipped) are
+   printed under "needs chrismo" and left alone.
+
+**Trust:** a thread is handed over only if every comment in it is from a bot
+(GitHub `Bot` type or `pr-tend.botLogin`) or the viewer. Anyone else's text
+could steer edits that `pr-tend.verify` then runs and the push publishes, so
+such threads go to "needs chrismo" untouched. The agent never runs shell
+commands beyond read-only git (Claude) or none at all (pi); `verify` runs repo
+code on agent edits, unsandboxed — `--dry-run` lets chrismo look first.
+
+Not in v1: local review before the push, cycle cap, bot re-trigger, the
+`accepted` pin, lease / lock. `pr-tend.botIgnore` (multi-valued) keeps bots
+such as `github-actions` from ever being owed.
+
+## Process supervision — plan for the loop (not built)
+
+From Symphony SPEC §7–8 and Sortie (`orchestrator/reconcile.go`, `slot.go`,
+`procutil/pgid_unix.go`, ADR-0002): a tick reconciles running work first, then
+dispatches into free slots; exits are events with distinct reasons; state is
+durable (Sortie's correction to Symphony's in-memory state). Our launchd pass is
+short-lived, so it can't own children like their daemons do. Plan:
+
+- The pass never waits on an agent: it launches `pr-act <verb> <branch>`
+  detached.
+- The verb is the supervisor of its own step: new process group, wall-clock
+  deadline, writes an outcome record on exit.
+- A lease file per running step (pid, pgid, verb, start, deadline, harness) is
+  the claim — the missing "step in flight" record (req-review #4).
+- Each pass reconciles leases before dispatching: live → skip the branch; past
+  deadline → kill the group, "timed out"; pid gone with no outcome → "crashed".
+- Global cap on concurrent steps, counted from live leases (start at 2).
+- To verify first: whether launchd kills a finished job's leftover process
+  group unless `AbandonProcessGroup` is set (from memory, unverified).
 
 ## To verify (spikes before building on them)
 

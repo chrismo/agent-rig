@@ -1,16 +1,30 @@
 #!/usr/bin/env bash5
 #
-# pr-act - mechanical PR-pipeline verbs.
+# pr-act - PR-pipeline verbs.
 #
-# Usage: pr-act <verb> [<branch>]
+# Usage: pr-act <verb> [options] [<branch>]
 #
 #   enroll     mark <branch> (default: current) for the watcher and register
 #              this repo in global git config pr-tend.repo
 #   unenroll   clear the mark
+#   address    hand the PR's owed bot feedback (threads, review bodies, PR
+#              comments) to an agent, then commit its edits, run
+#              pr-tend.verify, push, reply, and resolve what it fixed
+#              or answered. Items it marks "ask" are left for chrismo.
+#      --force        run even if the branch is behind, unpushed or taken over
+#      --dry-run      stop after the local commit: no push, nothing posted
+#      --harness H    claude (default) or pi; stored in branch.<b>.pr-harness
+#
+# Config: pr-tend.remote (origin), pr-tend.verify (shell command, run in the
+#         worktree), pr-tend.stepTimeout (1800 s), pr-tend.replyPrefix ("🤖 "),
+#         pr-tend.<harness>.args (extra CLI args, split on whitespace),
+#         pr-tend.botLogin (users counted as bots), branch.<b>.pr-session.
 #
 # See docs/pr-workflow/design.md, "Act".
 
 set -euo pipefail
+
+source "$(dirname "$(realpath "$0")")/../lib/pr-tend.sh"
 
 die() { echo "pr-act: $*" >&2; exit 1; }
 help() { sed -n '3,/^$/s/^# \{0,1\}//p' "$0"; }
@@ -20,9 +34,254 @@ usage() { help >&2; exit 1; }
 verb=$1; shift
 if [[ $verb == -h || $verb == --help ]]; then help; exit 0; fi
 
+force=false dry_run=false harness_opt="" branch=""
+while (( $# )); do
+  case $1 in
+    --force) force=true ;;
+    --dry-run) dry_run=true ;;
+    --harness) (( $# > 1 )) || die "--harness needs a value"; harness_opt=$2; shift ;;
+    -*) die "unknown option: $1" ;;
+    *) branch=$1 ;;
+  esac
+  shift
+done
+
 git rev-parse --git-dir >/dev/null 2>&1 || die "not a git repository"
-branch=${1:-$(git branch --show-current)}
+branch=${branch:-$(git branch --show-current)}
 [[ -n $branch ]] || die "detached HEAD; name a branch"
+
+# ── address ──────────────────────────────────────────────────────────────────
+
+# Hard refusals (no PR, closed, GitHub unreadable) can't be forced; soft ones
+# can; warnings never block.
+read -r -d '' GATE <<'EOF' || true
+[ if .pr == null then {hard: "no PR for \(.branch)"}
+  elif .pr.state != "OPEN" then {hard: "PR #\(.pr.number) is \(.pr.state | ascii_downcase)"}
+  elif .threads.owed_bot == null then {hard: "can't read the PR from GitHub: \(.errors // [] | join("; "))"}
+  else empty end,
+  if .session.locked then {soft: "taken over (branch.\(.branch).pr-lock is set)"} else empty end,
+  if .sync.conflict then {soft: "restack due, and it would conflict"}
+  elif .sync.up_to_date == false then {soft: "behind \(.sync.target) by \(.sync.behind): restack first"}
+  elif .sync.up_to_date == null then {soft: "sync with \(.sync.target // "the parent") unknown"}
+  else empty end,
+  if .push.remote_sha == null then {soft: "not pushed"}
+  elif .push.diverged then {soft: "diverged from the remote branch"}
+  elif .push.behind > 0 then {soft: "the remote branch has \(.push.behind) commit(s) you don't"}
+  elif .push.ahead > 0 then {soft: "\(.push.ahead) unpushed commit(s)"}
+  else empty end,
+  if .ci.verdict == "pending" then {warn: "CI is still running"} else empty end ]
+EOF
+
+read -r -d '' NODES_Q <<'EOF' || true
+query($ids: [ID!]!) {
+  viewer { login }
+  nodes(ids: $ids) {
+    __typename
+    ... on PullRequestReviewThread { id path line isOutdated
+      comments(first: 50) { nodes { author { __typename login } body } } }
+    ... on PullRequestReview { id author { __typename login } body }
+    ... on IssueComment { id author { __typename login } body }
+  }
+}
+EOF
+
+read -r -d '' SCHEMA <<'EOF' || true
+{"type": "object", "required": ["outcome", "commit_message", "summary", "items"],
+ "properties": {
+   "outcome": {"enum": ["done", "needs-input", "gave-up"]},
+   "commit_message": {"type": ["string", "null"]},
+   "summary": {"type": "string"},
+   "items": {"type": "array", "items": {"type": "object", "required": ["id", "action", "reply"],
+     "properties": {"id": {"type": "string"},
+                    "action": {"enum": ["fixed", "reply", "pushback", "ask"]},
+                    "reply": {"type": "string"}}}}}}
+EOF
+
+read -r -d '' PROMPT <<'EOF' || true
+You are addressing automated code-review feedback on a pull request. The
+working tree is the PR branch, checked out and clean.
+
+For each finding below, pick exactly one action:
+- fixed:    you changed code to address it
+- reply:    no change needed (already handled, or a question you can answer)
+- pushback: you disagree; say why
+- ask:      it needs a decision from the PR's author; say what the question is
+
+Make fixes by editing files. Keep edits to what the findings ask for. Do not
+commit, push, or run gh: the pipeline commits your edits, runs checks, pushes,
+and posts each `reply` on the PR as written, so keep replies short and
+specific. Return one item per finding id, a one-line commit_message if you
+changed anything (else null), and outcome "done", "needs-input" (anything you
+marked ask) or "gave-up" (you couldn't make sense of it; nothing is posted).
+EOF
+
+worktree_for() { # the worktree that has refs/heads/<branch> checked out
+  git worktree list --porcelain \
+    | awk -v ref="refs/heads/$1" '/^worktree / { wt = substr($0, 10) } $0 == "branch " ref { print wt; exit }'
+}
+
+gql() { gh api graphql "$@"; }
+
+where() { jq -r 'if .type == "thread" then "\(.path):\(.line)" elif .type == "review" then "review body" else "PR comment" end' <<<"$1"; }
+
+report() { # report <plan> <summary>
+  local item
+  echo "$branch: $2"
+  while IFS= read -r item; do
+    printf '  %-9s %-20s %s\n' "$(jq -r .action <<<"$item")" "$(where "$item")" "$(jq -r .reply <<<"$item")"
+  done < <(jq -c '.[] | select(.action != "ask")' <<<"$1")
+  if [[ $(jq '[.[] | select(.action == "ask")] | length' <<<"$1") -gt 0 ]]; then
+    echo "needs chrismo:"
+    while IFS= read -r item; do
+      printf '  %-20s %s\n' "$(where "$item")" "$(jq -r .reply <<<"$item")"
+    done < <(jq -c '.[] | select(.action == "ask")' <<<"$1")
+  fi
+}
+
+address() {
+  local b=$branch wt remote state gate line owed nodes findings
+  wt=$(worktree_for "$b")
+  [[ -n $wt ]] || die "$b isn't checked out in any worktree"
+  [[ -z $(git -C "$wt" status --porcelain) ]] || die "$wt has uncommitted changes"
+  remote=$(git config --get pr-tend.remote || echo origin)
+  git -C "$wt" fetch --quiet "$remote" || die "fetch from $remote failed"
+  state=$(cd "$wt" && pr-state --json "$b") || die "pr-state failed"
+
+  gate=$(jq -c "$GATE" <<<"$state")
+  line=$(jq -r '.[] | .hard // empty' <<<"$gate" | head -1)
+  [[ -z $line ]] || die "$line"
+  owed=$(jq -c '[.threads.items[] | select(.kind == "bot")]' <<<"$state")
+  if [[ $owed == '[]' ]]; then
+    echo "nothing to address on $b ($(jq -r '.threads.owed_human // 0' <<<"$state") human thread(s) are chrismo's)"
+    return
+  fi
+  if ! $force && [[ $(jq '[.[] | .soft // empty] | length' <<<"$gate") -gt 0 ]]; then
+    { echo "pr-act: not addressing $b:"
+      jq -r '.[] | .soft // empty | "  - \(.)"' <<<"$gate"
+      echo "(--force to run anyway)"; } >&2
+    exit 1
+  fi
+  jq -r '.[] | .warn // empty | "pr-act: warning: \(.)"' <<<"$gate" >&2
+
+  local -a id_args=()
+  (( $(jq length <<<"$owed") <= 100 )) || echo "pr-act: warning: over 100 owed items; taking the first 100" >&2
+  while IFS= read -r line; do id_args+=(-f "ids[]=$line"); done < <(jq -r '.[:100][].id' <<<"$owed")
+  nodes=$(gql -f query="$NODES_Q" "${id_args[@]}") || die "couldn't fetch the findings' text"
+  # Anyone else in a thread is untrusted: their text would steer edits that
+  # verify runs and the push publishes.
+  findings=$(jq -c --argjson bots "$({ git config --get-all pr-tend.botLogin || true; } | jq -Rsc 'split("\n") | map(select(. != ""))')" '
+    def unbot: sub("\\[bot\\]$"; "");
+    .data.viewer.login as $me
+    | [.data.nodes[] | select(. != null)
+       | {id, type: {PullRequestReviewThread: "thread", PullRequestReview: "review", IssueComment: "comment"}[.__typename],
+          path, line, outdated: .isOutdated,
+          conversation: [(.comments.nodes[]? // .) | {author: .author.login, bot: (.author.__typename == "Bot"), body}]}
+       | .untrusted = ([.conversation[] | select((.bot or .author == $me or (.author | unbot | IN($bots[] | unbot))) | not)
+                        | .author] | unique)
+       | .conversation |= map(del(.bot))]' <<<"$nodes")
+  [[ $findings != '[]' ]] || die "none of the owed items could be fetched"
+  local held
+  held=$(jq -c '[.[] | select(.untrusted != [])
+    | del(.untrusted) + {action: "ask", reply: "joined by \(.untrusted | join(", ")): yours to answer"}]' <<<"$findings")
+  findings=$(jq -c '[.[] | select(.untrusted == []) | del(.untrusted)]' <<<"$findings")
+  if [[ $findings == '[]' ]]; then
+    report "$held" "no bot feedback the agent can take"
+    return
+  fi
+
+  local stored_h sid h mode result outcome plan timeout
+  stored_h=$(git config --get "branch.$b.pr-harness" || true)
+  sid=$(git config --get "branch.$b.pr-session" || true)
+  h=${harness_opt:-${stored_h:-claude}}
+  if [[ -n $sid ]]; then
+    [[ $h == "${stored_h:-claude}" ]] \
+      || die "branch.$b.pr-session belongs to ${stored_h:-claude}; unset it to start a $h session"
+    mode=resume
+  else
+    sid=$(uuidgen | tr 'A-F' 'a-f') mode=new
+  fi
+  timeout=$(git config --get pr-tend.stepTimeout || echo 1800)
+  [[ $timeout =~ ^[1-9][0-9]*$ ]] || die "pr-tend.stepTimeout must be whole seconds: $timeout"
+  echo "pr-act: $h ($mode session $sid) is addressing $(jq length <<<"$findings") item(s) on $b…" >&2
+  result=$(cd "$wt" && harness_run "$h" "$sid" "$mode" "$timeout" \
+             "$PROMPT"$'\n\nPR '"$(jq -r '.pr.url' <<<"$state")"$'\nFindings:\n'"$(jq . <<<"$findings")" "$SCHEMA") \
+    || die "the $h step failed or returned no usable result (session $sid)"
+  git config "branch.$b.pr-session" "$sid"
+  git config "branch.$b.pr-harness" "$h"
+
+  # pi has no schema enforcement, so check the shape here too.
+  outcome=$(jq -r .outcome <<<"$result")
+  case $outcome in
+    done|needs-input) ;;
+    gave-up) die "the agent gave up: $(jq -r .summary <<<"$result"). Any edits are left uncommitted in $wt" ;;
+    *) die "the agent returned outcome \"$outcome\"; edits (if any) are left uncommitted in $wt" ;;
+  esac
+  local changed=false
+  [[ -n $(git -C "$wt" status --porcelain) ]] && changed=true
+  plan=$(jq -c --argjson r "$result" --argjson changed "$changed" --argjson held "$held" '
+    [.[] | . as $f | ([$r.items[]? | select(.id == $f.id)][0] // {}) as $a
+     | $f + if ($a.action | IN("fixed", "reply", "pushback", "ask") | not) then {action: "ask", reply: "(the agent did not answer this one)"}
+            elif ($a.reply | type) != "string" or ($a.reply | test("\\S") | not) then {action: "ask", reply: "(the agent gave no reply text)"}
+            elif $a.action == "fixed" and ($changed | not) then {action: "ask", reply: "(said fixed but changed nothing): \($a.reply)"}
+            else {action: $a.action, reply: $a.reply} end] + $held' <<<"$findings")
+
+  local verify msg
+  if $changed; then
+    msg=$(jq -r '(.commit_message // "") | if test("\\S") then . else "Address review feedback" end' <<<"$result")
+    git -C "$wt" add -A && git -C "$wt" commit -q -m "$msg" || die "commit failed; the edits are left in $wt"
+  fi
+  verify=$(git -C "$wt" config --get pr-tend.verify || true)
+  if [[ -n $verify ]]; then
+    (cd "$wt" && sh -c "$verify") || die "verify failed ($verify); the commit is kept in $wt, nothing pushed or posted"
+    [[ -z $(git -C "$wt" status --porcelain) ]] \
+      || die "verify changed files in $wt (a formatter?); commit them and rerun. Nothing pushed or posted"
+  fi
+
+  report "$plan" "$(jq -r .summary <<<"$result")"
+  if $dry_run; then
+    echo "dry run: nothing pushed or posted"
+    return
+  fi
+
+  if [[ $(git -C "$wt" rev-parse HEAD) != "$(git -C "$wt" rev-parse -q --verify "refs/remotes/$remote/$b" || true)" ]]; then
+    git -C "$wt" push --quiet "$remote" "$b" || die "push failed; nothing posted"
+  fi
+  local prefix id failed=0 pr_id body=""
+  prefix=$(git config --get pr-tend.replyPrefix || echo "🤖 ")
+  while IFS= read -r item; do
+    id=$(jq -r .id <<<"$item")
+    gql -f query='mutation($thread: ID!, $body: String!) {
+          addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $thread, body: $body}) { comment { id } } }' \
+        -f thread="$id" -f body="$prefix$(jq -r .reply <<<"$item")" >/dev/null \
+      || { echo "pr-act: replying to $(where "$item") failed" >&2; failed=1; continue; }
+    if [[ $(jq -r .action <<<"$item") != pushback ]]; then
+      gql -f query='mutation($thread: ID!) { resolveReviewThread(input: {threadId: $thread}) { thread { id } } }' \
+          -f thread="$id" >/dev/null \
+        || { echo "pr-act: resolving $(where "$item") failed" >&2; failed=1; }
+    fi
+  done < <(jq -c '.[] | select(.type == "thread" and .action != "ask")' <<<"$plan")
+
+  # Review bodies and PR comments can't be replied to or resolved: answer them
+  # in one PR comment and remember them in branch.<b>.pr-handled.
+  body=$(jq -r --arg p "$prefix" '[.[] | select(.type != "thread" and .action != "ask")]
+    | if length == 0 then empty else
+        "\($p)Addressed review feedback:\n\n" + (map("> \(.conversation[0].body | split("\n") | map(select(test("\\S") and (startswith("<!--") | not)))[0] // "")\n\n\(.reply)") | join("\n\n"))
+      end' <<<"$plan")
+  if [[ -n $body ]]; then
+    # By URL, not {owner}/{repo}: gh's default repo may be a fork.
+    if pr_id=$(gql -f url="$(jq -r .pr.url <<<"$state")" \
+                 -f query='query($url: URI!) { resource(url: $url) { ... on PullRequest { id } } }' \
+                 --jq .data.resource.id) \
+       && gql -f query='mutation($subject: ID!, $body: String!) { addComment(input: {subjectId: $subject, body: $body}) { clientMutationId } }' \
+              -f subject="$pr_id" -f body="$body" >/dev/null; then
+      while IFS= read -r id; do git config --add "branch.$b.pr-handled" "$id"; done \
+        < <(jq -r '.[] | select(.type != "thread" and .action != "ask") | .id' <<<"$plan")
+    else
+      echo "pr-act: posting the PR comment failed" >&2; failed=1
+    fi
+  fi
+  return "$failed"
+}
 
 case $verb in
   enroll)
@@ -36,5 +295,6 @@ case $verb in
   unenroll)
     git config --unset "branch.$branch.pr-tend" || (( $? == 5 ))  # 5: wasn't set
     ;;
+  address) address ;;
   *) die "unknown verb: $verb" ;;
 esac

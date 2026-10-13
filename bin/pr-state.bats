@@ -90,7 +90,7 @@ thread() { # thread <first-type> <first-login> <last-type> <last-login> [resolve
 }
 
 state() { run "$PR_STATE" --json "$@"; [ "$status" -eq 0 ] || { echo "$output"; return 1; }; }
-field() { jq -r "$1" <<<"$output"; }
+field() { jq -r "$@" <<<"$output"; }
 
 # ── basics ───────────────────────────────────────────────────────────────────
 
@@ -512,6 +512,103 @@ three" "$TMP/other" && git -C "$TMP/other" push -q origin main 2>/dev/null
   [ "$(field .threads.owed_human)" = 1 ]
   [ "$(field .threads.outdated)" = 1 ]
   [ "$(field '.threads.items | length')" = 4 ]
+}
+
+note() { # note <id> <type> <login> [body] — a review or top-level comment node
+  printf '{id: "%s", body: "%s", author: {__typename: "%s", login: "%s"}}' "$1" "${4-findings}" "$2" "$3"
+}
+
+@test "threads: inline thread items are typed thread" {
+  git switch -qc feat && commit a.txt a
+  pr_fixture feat ".reviewThreads.nodes = [$(thread Bot copilot Bot copilot)]"
+  state
+  [ "$(field '.threads.items[0].type')" = thread ]
+  [ "$(field '.threads.items[0].path')" = file.txt ]
+}
+
+@test "threads: bot review bodies are owed; empty bodies and humans' are not" {
+  git switch -qc feat && commit a.txt a
+  pr_fixture feat ".reviews.nodes = [
+    $(note R1 Bot copilot),
+    $(note R2 Bot copilot '  '),
+    $(note R3 Bot copilot ''),
+    $(note R4 User alice)]"
+  state
+  [ "$(field .threads.owed_bot)" = 1 ]
+  [ "$(field .threads.owed_human)" = 0 ]
+  [ "$(field '.threads.items | length')" = 1 ]
+  [ "$(field -c '.threads.items[0]')" = '{"id":"R1","type":"review","path":null,"line":null,"outdated":null,"kind":"bot","last":"copilot"}' ]
+}
+
+@test "threads: bot top-level comments are owed; humans' are out of scope" {
+  git switch -qc feat && commit a.txt a
+  pr_fixture feat ".comments.nodes = [$(note C1 Bot coderabbitai), $(note C2 User alice)]"
+  state
+  [ "$(field .threads.owed_bot)" = 1 ]
+  [ "$(field .threads.owed_human)" = 0 ]
+  [ "$(field '.threads.items[0].type')" = comment ]
+  [ "$(field '.threads.items[0].id')" = C1 ]
+  [ "$(field '.threads.items[0].outdated')" = null ]
+}
+
+@test "threads: reviews and comments listed in branch pr-handled are not owed" {
+  git switch -qc feat && commit a.txt a
+  git config --add branch.feat.pr-handled R1
+  git config --add branch.feat.pr-handled C1
+  pr_fixture feat ".reviews.nodes = [$(note R1 Bot copilot), $(note R2 Bot copilot)]" \
+    ".comments.nodes = [$(note C1 Bot copilot)]"
+  state
+  [ "$(field .threads.owed_bot)" = 1 ]
+  [ "$(field '[.threads.items[].id] | join(",")')" = R2 ]
+}
+
+@test "threads: by_type counts owed bot items of each type" {
+  git switch -qc feat && commit a.txt a
+  pr_fixture feat ".reviewThreads.nodes = [$(thread Bot copilot Bot copilot), $(thread User alice User alice)]" \
+    ".reviews.nodes = [$(note R1 Bot copilot), $(note R2 Bot copilot)]" \
+    ".comments.nodes = [$(note C1 Bot copilot)]"
+  state
+  [ "$(field -c .threads.by_type)" = '{"thread":1,"review":2,"comment":1}' ]
+  [ "$(field .threads.owed_bot)" = 4 ]
+  [ "$(field .threads.owed_human)" = 1 ]
+}
+
+@test "threads: gh failing leaves by_type unknown" {
+  git switch -qc feat && commit a.txt a
+  GH_FAKE_FAIL="gh: down" state
+  [ "$(field .threads.by_type)" = null ]
+}
+
+@test "threads: pr-tend.botLogin takes several logins, with or without [bot]" {
+  git switch -qc feat && commit a.txt a
+  git config --add pr-tend.botLogin marge
+  git config --add pr-tend.botLogin homer[bot]
+  pr_fixture feat ".reviewThreads.nodes = [$(thread User marge User marge), $(thread User homer User homer)]" \
+    ".reviews.nodes = [$(note R1 User 'marge[bot]')]" \
+    ".comments.nodes = [$(note C1 User homer), $(note C2 User alice)]"
+  state
+  [ "$(field .threads.owed_bot)" = 4 ]
+  [ "$(field .threads.owed_human)" = 0 ]
+}
+
+@test "threads: bots in pr-tend.botIgnore are never owed" {
+  git switch -qc feat && commit a.txt a
+  git config --add pr-tend.botIgnore github-actions
+  git config --add pr-tend.botIgnore 'vercel[bot]'
+  pr_fixture feat ".reviewThreads.nodes = [$(thread Bot github-actions Bot github-actions), $(thread Bot copilot Bot copilot)]" \
+    ".reviews.nodes = [$(note R1 Bot vercel)]" \
+    ".comments.nodes = [$(note C1 Bot 'github-actions[bot]'), $(note C2 Bot copilot)]"
+  state
+  [ "$(field .threads.owed_bot)" = 2 ]
+  [ "$(field '[.threads.items[].last] | join(",")')" = "copilot,copilot" ]
+}
+
+@test "summary: review and comment items count in the bot total" {
+  git switch -qc feat && commit a.txt a
+  pr_fixture feat ".reviews.nodes = [$(note R1 Bot copilot)]" ".comments.nodes = [$(note C1 Bot copilot)]"
+  run "$PR_STATE"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"threads: 2 bot, 0 human"* ]]
 }
 
 # ── O8 session ───────────────────────────────────────────────────────────────

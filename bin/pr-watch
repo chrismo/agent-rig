@@ -25,6 +25,8 @@
 
 set -euo pipefail
 
+source "$(dirname "$(realpath "$0")")/../lib/pr-tend.sh"
+
 STATE_DIR=${PR_TEND_STATE_DIR:-$HOME/.local/state/pr-tend}
 STATUS_DIR=${STATUS_DIR:-$HOME/.claude/tab-status}
 LABEL=com.agent-rig.pr-watch
@@ -61,19 +63,6 @@ notify() {
   fi
 }
 
-# Kills the whole process group: children would otherwise hold our output pipe open.
-with_timeout() {
-  perl -e '
-    my $t = shift;
-    my $pid = fork // die "fork: $!\n";
-    if (!$pid) { setpgrp(0, 0); exec @ARGV or die "exec $ARGV[0]: $!\n" }
-    $SIG{ALRM} = sub { kill "TERM", -$pid; print STDERR "timed out after ${t}s\n"; exit 124 };
-    alarm $t;
-    waitpid $pid, 0;
-    exit($? & 127 ? 128 + ($? & 127) : $? >> 8);
-  ' "$TIMEOUT" "$@"
-}
-
 write_glyph() { # write_glyph <worktree-or-empty> <branch> <glyph>
   [[ -n $1 ]] || return 0
   local f; f="$STATUS_DIR/$(basename "$1").pr"
@@ -86,7 +75,7 @@ write_glyph() { # write_glyph <worktree-or-empty> <branch> <glyph>
 check() {
   local repo=$1 name=$2 b=$3 wt=$4 json cls glyph state_file prev line errf
   errf=$(mktemp)
-  if ! json=$(cd "$repo" && with_timeout pr-state --json "$b" 2>"$errf" </dev/null); then
+  if ! json=$(cd "$repo" && with_timeout "$TIMEOUT" pr-state --json "$b" 2>"$errf" </dev/null); then
     write_glyph "$wt" "$b" ⚠️
     printf '%s\t%s\t⚠️\tpr-state failed: %s\n' "$name" "$b" "$(head -1 "$errf")"
     rm -f "$errf"
@@ -131,7 +120,7 @@ run_pass() {
     (( ${#branches[@]} )) || continue
 
     remote=$(git -C "$repo" config --get pr-tend.remote || echo origin)
-    if ! fetch_err=$(with_timeout git -C "$repo" fetch --prune --quiet "$remote" 2>&1 </dev/null); then
+    if ! fetch_err=$(with_timeout "$TIMEOUT" git -C "$repo" fetch --prune --quiet "$remote" 2>&1 </dev/null); then
       lines+="$name"$'\t-\t⚠️\t'"fetch from $remote failed: ${fetch_err%%$'\n'*}"$'\n'
     fi
 

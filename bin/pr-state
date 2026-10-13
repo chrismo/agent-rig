@@ -12,7 +12,8 @@
 #   push      local vs remote branch; whether the remote SHA is ours (reflog)
 #   ci        checks on the PR head commit
 #   review    coverage of HEAD by refs/pr-tend/<branch>/{local,bot,accepted}
-#   threads   unresolved review threads whose last word isn't ours
+#   threads   unresolved review threads whose last word isn't ours, plus bot
+#             review bodies and top-level comments not yet marked handled
 #   session   pipeline enrollment, harness, session id, takeover lock
 #   fresh     false when GitHub's PR / parent-PR head differs from the local
 #             remote-tracking ref, i.e. sync and push answers need a fetch
@@ -21,8 +22,12 @@
 # fetch. One gh GraphQL call, two for a non-default parent. A gh failure is
 # recorded in .errors and the git facts are still reported.
 #
-# Config: pr-tend.remote (default origin), pr-tend.botLogin (a bot that posts
-# as a user, counted as a bot), branch.<name>.pr-{parent,tend,harness,session,lock}.
+# Config: pr-tend.remote (default origin), pr-tend.botLogin (multi-valued: bots
+# that post as users, counted as bots; a [bot] suffix is optional),
+# pr-tend.botIgnore (multi-valued: bots whose posts are never owed, e.g.
+# github-actions preview links),
+# branch.<name>.pr-{parent,tend,harness,session,lock}, branch.<name>.pr-handled
+# (multi-valued: node ids of bot reviews/comments already dealt with).
 
 set -euo pipefail
 
@@ -44,6 +49,8 @@ query($owner: String!, $repo: String!, $branch: String!) {
           first: comments(first: 1) { nodes { author { __typename login } } }
           last: comments(last: 1) { nodes { author { __typename login } } }
         } }
+        reviews(last: 50) { nodes { id body author { __typename login } } }
+        comments(last: 50) { nodes { id body author { __typename login } } }
       }
     }
   }
@@ -78,6 +85,7 @@ count() { git rev-list --count "$@"; }
 # -U0: an upstream edit next to our lines must not read as a changed patch.
 patch_id() { git diff -U0 "$1" "$2" | git patch-id --stable | cut -d' ' -f1; }
 jnull() { if [[ -n $1 ]]; then jq -n --arg v "$1" '$v'; else echo null; fi; }
+jlist() { { git config --get-all "$1" || true; } | jq -R . | jq -sc .; }
 
 # -f, not -F, for the branch: -F would send "1234" or "true" as a non-string.
 RESP=""
@@ -250,11 +258,16 @@ state=$(jq -n \
   --argjson r_local "${review[local]}" --argjson r_bot "${review[bot]}" \
   --argjson r_accepted "${review[accepted]}" \
   --argjson gh_ok "$gh_ok" --argjson parent_ok "$parent_ok" \
-  --arg viewer "$viewer" --arg bot "$(git config --get pr-tend.botLogin || true)" \
+  --arg viewer "$viewer" --argjson bots "$(jlist pr-tend.botLogin)" \
+  --argjson ignore "$(jlist pr-tend.botIgnore)" \
+  --argjson handled "$(jlist "branch.$branch.pr-handled")" \
   --arg enrolled "$(cfg pr-tend)" --arg harness "$(cfg pr-harness)" \
   --arg session "$(cfg pr-session)" --arg lock "$(cfg pr-lock)" \
   --args '
   def nn: if . == "" then null else . end;
+  def unbot: sub("\\[bot\\]$"; "");
+  def is_bot: .__typename == "Bot" or ((.login // "" | unbot) as $l | $l != "" and any($bots[]; unbot == $l));
+  def ignored: (.login // "" | unbot) as $l | any($ignore[]; unbot == $l);
   def ci_class:
     if .__typename == "CheckRun" then
       if .status != "COMPLETED" then "pending" else .conclusion end
@@ -266,11 +279,15 @@ state=$(jq -n \
   ($pr.commits.nodes[0].commit // null) as $c
   | ([$c.statusCheckRollup.contexts.nodes // [] | .[] | {name: (.name // .context), k: ci_class}]) as $ctx
   | ([$pr.reviewThreads.nodes // [] | .[]
-      | select((.isResolved | not) and ((.last.nodes[0].author.login // "") != $viewer))
-      | (.first.nodes[0].author // {}) as $f
-      | {id, path, line, outdated: .isOutdated,
-         kind: (if $f.__typename == "Bot" or ($bot != "" and $f.login == $bot) then "bot" else "human" end),
-         last: .last.nodes[0].author.login}]) as $owed
+      | select((.isResolved | not) and ((.last.nodes[0].author.login // "") != $viewer)
+               and (.first.nodes[0].author // {} | ignored | not))
+      | {id, type: "thread", path, line, outdated: .isOutdated,
+         kind: (if .first.nodes[0].author // {} | is_bot then "bot" else "human" end),
+         last: .last.nodes[0].author.login}]
+     + [($pr.reviews.nodes // [] | .[] | {n: ., type: "review"}), ($pr.comments.nodes // [] | .[] | {n: ., type: "comment"})
+        | select((.n.author // {} | is_bot and (ignored | not)) and (.n.body // "" | test("\\S")) and (.n.id | IN($handled[]) | not))
+        | {id: .n.id, type, path: null, line: null, outdated: null, kind: "bot", last: .n.author.login}]) as $owed
+  | [$owed[] | select(.kind == "bot")] as $ob
   | {
       branch: $branch, head: $head,
       pr: (if $pr == null then null else
@@ -291,9 +308,11 @@ state=$(jq -n \
            failing: [$ctx[] | select(.k == "fail") | .name],
            pending: [$ctx[] | select(.k == "pending") | .name]},
       review: {local: $r_local, bot: $r_bot, accepted: $r_accepted},
-      threads: {owed_bot: (if $gh_ok then [$owed[] | select(.kind == "bot")] | length else null end),
+      threads: {owed_bot: (if $gh_ok then $ob | length else null end),
                 owed_human: (if $gh_ok then [$owed[] | select(.kind == "human")] | length else null end),
                 outdated: (if $gh_ok then [$owed[] | select(.outdated)] | length else null end),
+                by_type: (if $gh_ok then reduce $ob[] as $i ({thread: 0, review: 0, comment: 0}; .[$i.type] += 1)
+                          else null end),
                 items: $owed},
       session: {enrolled: ($enrolled == "true"), harness: ($harness | nn), id: ($session | nn),
                 locked: ($lock != "")},
@@ -325,7 +344,9 @@ jq -r '
     (if .pr == null then empty
      else "CI \(.ci.verdict)\(if .ci.failing != [] then " (\(.ci.failing | join(", ")))" else "" end)\(if .ci.for_head == false then " on old head" else "" end)" end),
     (if (.threads.owed_bot // 0) + (.threads.owed_human // 0) > 0 then
-       "threads: \(.threads.owed_bot) bot, \(.threads.owed_human) human" else empty end),
+       "threads: \(.threads.owed_bot) bot, \(.threads.owed_human) human\(
+         [.threads.by_type // {} | to_entries[] | select(.key != "thread" and .value > 0) | "\(.value) \(.key)"]
+         | if . == [] then "" else " (incl. \(join(", ")))" end)" else empty end),
     (.review | to_entries[] | select(.value != null and .value.status != "none")
      | "\(.key) \({covered: "✓", "rewritten-same": "✓", uncovered: "+\(.value.uncovered)", "rewritten-changed": "✗", unknown: "?"}[.value.status])"),
     (if .session.locked then "locked" else empty end),
