@@ -747,6 +747,13 @@ review() {
   [ "$(field -c '.threads.items[0] | {author, excerpt, url}')" = '{"author":"copilot","excerpt":"Rename `one`?","url":"https://example/pr/7#t1"}' ]
 }
 
+@test "items: a multi-line HTML comment is skipped in the excerpt" {
+  git switch -qc feat && commit a.txt a
+  pr_fixture feat ".comments.nodes = [$(note C1 Bot copilot '<!--\nccr-overview\n-->\n## Real summary')]"
+  state
+  [ "$(field '.threads.items[0].excerpt')" = "Real summary" ]
+}
+
 @test "items: a long excerpt is cut to 100 characters" {
   git switch -qc feat && commit a.txt a
   long=$(printf 'x%.0s' {1..150})

@@ -290,8 +290,8 @@ state=$(jq -n \
   def unbot: sub("\\[bot\\]$"; "");
   def is_bot: .__typename == "Bot" or ((.login // "" | unbot) as $l | $l != "" and any($bots[]; unbot == $l));
   def ignored: (.login // "" | unbot) as $l | any($ignore[]; unbot == $l);
-  # First line with text, HTML tags and heading / quote markers removed.
-  def excerpt: [(. // "") | split("\n")[] | gsub("<[^>]*>"; "") | sub("^[#>\\s]+"; "") | sub("\\s+$"; "")
+  # First line with text, HTML comments, tags and heading / quote markers removed.
+  def excerpt: [(. // "") | gsub("<!--[\\s\\S]*?-->"; "") | split("\n")[] | gsub("<[^>]*>"; "") | sub("^[#>\\s]+"; "") | sub("\\s+$"; "")
                 | select(. != "")][0] // "" | .[0:100];
   def detail: {author: .author.login, url, excerpt: (.body | excerpt)};
   def ci_class:
