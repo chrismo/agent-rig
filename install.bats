@@ -754,6 +754,15 @@ OLD_CHECKOUT() { echo "$TEST_DIR/old/claude-rig"; }
   [[ "$target" == "$BATS_TEST_DIRNAME/bin/pr-watch" ]]
 }
 
+@test "bin: pr-config is symlinked from bin/" {
+  run_installer
+  [ "$status" -eq 0 ]
+  [ -L "$LOCAL_BIN/pr-config" ]
+  local target
+  target=$(readlink "$LOCAL_BIN/pr-config")
+  [[ "$target" == "$BATS_TEST_DIRNAME/bin/pr-config" ]]
+}
+
 @test "bin: analysis scripts in bin/ are not installed as commands" {
   # The install list is an allowlist for exactly this reason - adding a
   # user-facing command means adding it there, and a new .sh left in bin/

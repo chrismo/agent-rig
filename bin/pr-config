@@ -1,0 +1,86 @@
+#!/usr/bin/env bash5
+#
+# pr-config - per-step harness settings for the PR pipeline.
+#
+# Usage: pr-config get <step> [<branch>]
+#        pr-config init [--force] [<branch>]
+#
+#   get    print the settings <step> runs with as one JSON object: harness,
+#          then model / effort / provider / args as set. <branch> defaults to
+#          the current one.
+#   init   copy the global file to the branch's file (an empty overlay when
+#          there is no global file). Refuses to overwrite without --force.
+#
+# Files: global  $PR_TEND_CONFIG, else ${XDG_CONFIG_HOME:-~/.config}/pr-tend/config.json
+#        branch  <git common dir>/pr-tend/<branch>.json, "/" written as %2F,
+#                shared by every worktree of the repo
+#
+# Later layers win; null removes the key: global harness block, branch harness
+# block, global step block, branch step block. See docs/pr-workflow/design.md,
+# "Config files".
+
+set -euo pipefail
+
+die() { echo "pr-config: $*" >&2; exit 1; }
+help() { sed -n '3,/^$/s/^# \{0,1\}//p' "$0"; }
+usage() { help >&2; exit 1; }
+
+global_file() { echo "${PR_TEND_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/pr-tend/config.json}"; }
+
+branch_file() { # <branch>
+  local dir name=${1//[%]/%25}
+  dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || die "not a git repository"
+  echo "$dir/pr-tend/${name//\//%2F}.json"
+}
+
+# layer <file>: its JSON, or {} when it doesn't exist.
+layer() {
+  [[ -e $1 ]] || { echo '{}'; return; }
+  jq -e 'type == "object"' "$1" >/dev/null 2>&1 || die "not a JSON object: $1"
+  cat "$1"
+}
+
+branch_arg() { # <branch-or-empty>
+  local b=${1:-$(git branch --show-current 2>/dev/null || true)}
+  [[ -n $b ]] || die "detached HEAD; name a branch"
+  echo "$b"
+}
+
+get() { # <step> <branch>
+  local step=$1 query
+  [[ $step =~ ^[a-z][a-z0-9-]*$ ]] || die "invalid step name: $step"
+  query='aggregate cfg:=collect(this)
+    | values {g: cfg[0], b: cfg[1], s: "'$step'"}
+    | values {g, b, s, h: coalesce(b.steps[s].harness, g.steps[s].harness, b.harness, g.harness, "claude")}
+    | values {harness: h, ...coalesce(g.harnesses[h], {}), ...coalesce(b.harnesses[h], {}),
+              ...coalesce(g.steps[s][h], {}), ...coalesce(b.steps[s][h], {})}
+    | values flatten(this) | unnest this | where value is not null
+    | aggregate kv:=collect(this) | values unflatten(kv)'
+  { layer "$(global_file)"; layer "$(branch_file "$2")"; } | super -j -c "$query" -
+}
+
+init() { # <force> <branch>
+  local force=$1 b=$2 src dest
+  git rev-parse -q --verify "refs/heads/$b" >/dev/null || die "no such branch: $b"
+  src=$(global_file) dest=$(branch_file "$b")
+  [[ $force == true || ! -e $dest ]] || die "$dest exists; --force overwrites it"
+  mkdir -p "$(dirname "$dest")"
+  if [[ -e $src ]]; then layer "$src" >/dev/null && cp "$src" "$dest"; else echo '{}' > "$dest"; fi
+}
+
+(( $# )) || usage
+verb=$1; shift
+case $verb in
+  -h|--help) help ;;
+  get)
+    (( $# )) || usage
+    step=$1
+    branch=$(branch_arg "${2:-}")
+    get "$step" "$branch" ;;
+  init)
+    force=false
+    if [[ ${1:-} == --force ]]; then force=true; shift; fi
+    branch=$(branch_arg "${1:-}")
+    init "$force" "$branch" ;;
+  *) die "unknown verb: $verb" ;;
+esac
