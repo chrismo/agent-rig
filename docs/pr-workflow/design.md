@@ -15,6 +15,14 @@ a glance where each one stands:
 3. review current (local and/or bot)
 4. bot comments responded to
 
+**Name: `pr-tend`, for now (2026-10-13).** It's the overarching name for the
+pipeline and the namespace for its state: git config `pr-tend.*` and
+`branch.<b>.pr-tend`, `refs/pr-tend/`, `~/.config/pr-tend/`,
+`~/.local/state/pr-tend/`, `<git dir>/pr-tend/`, `lib/pr-tend.sh`. The commands
+stay `pr-state`, `pr-act`, `pr-watch`, `pr-config`. Candidates if it's renamed:
+`sheepdog` (favourite), `tug`. Renaming means a pass over every name above,
+plus migrating existing state.
+
 ## Principles
 
 1. **Deterministic wherever possible.** Scripts observe and act at zero token
