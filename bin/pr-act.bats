@@ -86,6 +86,16 @@ repos() { git config --global --get-all pr-tend.repo || true; }
   [ "$status" -eq 0 ]
 }
 
+@test "--help: every verb has a usage line" {
+  run "$PR_ACT" --help
+  [ "$status" -eq 0 ]
+  verbs=$(sed -n '/^case \$verb in/,/^esac/s/^  \([a-z-]*\)).*/\1/p' "$PR_ACT")
+  [ -n "$verbs" ]
+  for v in $verbs; do
+    [[ "$output" =~ pr-act\ $v\  ]] || { echo "missing: $v"; false; }
+  done
+}
+
 @test "--help works outside a repo" {
   cd "$TMP"
   run "$PR_ACT" --help

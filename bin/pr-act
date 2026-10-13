@@ -1,29 +1,36 @@
 #!/usr/bin/env bash5
 #
-# pr-act - PR-pipeline verbs.
+# pr-act - verbs that change a branch's PR.
 #
-# Usage: pr-act <verb> [options] [<branch>]
+# Usage:
+#   pr-act enroll   [<branch>]
+#   pr-act unenroll [<branch>]
+#   pr-act address  [--force] [--no-publish] [--harness <h>] [<branch>]
 #
-#   enroll     mark <branch> (default: current) for the watcher and register
-#              this repo in global git config pr-tend.repo
-#   unenroll   clear the mark
-#   address    hand the PR's owed bot feedback (threads, review bodies, PR
-#              comments) to an agent, then commit its edits, run
-#              settings.verify, push, reply, and resolve what it fixed
-#              or answered. Items it marks "ask" are left for chrismo.
-#      --force        run even if the branch is unpushed, diverged or taken over
-#      --no-publish   stop after the local commit: no push, nothing posted.
-#                     The agent still runs, so this spends tokens.
-#      --harness H    claude (default) or pi; stored in branch.<b>.pr-harness
+# Examples:
+#   pr-act enroll                      pr-watch starts tracking this branch
+#   pr-act address --no-publish        the agent fixes locally; nothing pushed or posted
+#   pr-act address --harness pi
 #
-# Config: read with lib/pr-config.sh (branch file over global file over
-#         built-in defaults; see pr-config --help). settings: remote (origin),
-#         verify (shell command, run in the worktree), stepTimeout (1800 s),
-#         replyPrefix ("🤖 "), botLogin (users counted as bots). Per harness:
-#         model, effort, provider (pi), args (extra CLI args, split on
-#         whitespace). Session state: branch.<b>.pr-session, .pr-harness.
+# Verbs:
+#   enroll    mark the branch for pr-watch, and register this repo
+#   unenroll  clear the mark
+#   address   hand owed bot feedback to an agent, then commit, verify, push,
+#             reply and resolve; items the agent marks "ask" are left for chrismo
 #
-# See docs/pr-workflow/design.md, "Act".
+# address options:
+#   --force         run even if the branch is unpushed, diverged or taken over
+#   --no-publish    stop after the local commit (the agent still runs: tokens)
+#   --harness <h>   claude (default) or pi; remembered for the branch
+#
+# Config (pr-config show):
+#   settings  remote, verify, stepTimeout, replyPrefix, botLogin
+#   harness   model, effort, provider (pi), args
+#
+# State (git config): branch.<b>.pr-tend, .pr-session, .pr-harness, .pr-handled;
+# pr-tend.repo (global) lists the enrolled repos.
+#
+# <branch> defaults to the current one. See docs/pr-workflow/design.md, "Act".
 
 set -euo pipefail
 
