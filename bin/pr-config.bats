@@ -784,6 +784,55 @@ pin_setup() {
   [[ "$output" == *"Usage"* ]]
 }
 
+@test "set: options may follow the path and value" {
+  run "$PR_CONFIG" set --global settings.botIgnore --json '["linear-code"]'
+  [ "$status" -eq 0 ]
+  [ "$(jq -c .settings.botIgnore "$PR_TEND_CONFIG")" = '["linear-code"]' ]
+  run "$PR_CONFIG" set settings.verify make --branch feat
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .settings.verify "$(branch_file feat)")" = make ]
+}
+
+@test "get, show and step: options may follow the arguments" {
+  "$PR_CONFIG" set --global --json settings.botLogin '["a"]'
+  run "$PR_CONFIG" get settings.botLogin --json --no-branch
+  [ "$status" -eq 0 ]
+  [ "$output" = '["a"]' ]
+  run "$PR_CONFIG" show feat --no-branch
+  [ "$status" -eq 0 ]
+  run "$PR_CONFIG" step address --harness pi
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .harness <<<"$output")" = pi ]
+}
+
+@test "a value starting with -- that isn't an option is a value" {
+  run "$PR_CONFIG" set harnesses.claude.args "--model sonnet"
+  [ "$status" -eq 0 ]
+  run "$PR_CONFIG" set harnesses.pi.args --verbose
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '[.harnesses.claude.args, .harnesses.pi.args]' "$(branch_file feat)")" = '["--model sonnet","--verbose"]' ]
+}
+
+@test "--: ends options, so a value can be an option's name" {
+  run "$PR_CONFIG" set harnesses.claude.args -- --json
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .harnesses.claude.args "$(branch_file feat)")" = --json ]
+}
+
+@test "an option the verb doesn't take is named" {
+  run "$PR_CONFIG" set settings.verify make --no-branch
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"set doesn't take --no-branch"* ]]
+}
+
+@test "a wrong argument count shows that verb's usage, not the whole help" {
+  run "$PR_CONFIG" set settings.verify
+  [ "$status" -eq 1 ]
+  [[ "${lines[0]}" == "pr-config: set needs <path> <value>" ]] || false
+  [[ "$output" == *"pr-config set   [--global"* ]] || false
+  [[ "$output" != *"Layers"* ]]
+}
+
 @test "unset: removes the key so it inherits again" {
   write_global "$GLOBAL"
   write_branch feat '{"harnesses":{"claude":{"model":"opus","effort":"low"}}}'

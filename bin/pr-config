@@ -33,6 +33,7 @@
 #   - get prints strings raw, lists one per line, objects as JSON (--json: all)
 #   - exit 3: no value and no default. exit 1: an error
 #   - <branch> defaults to the current one; --no-branch skips the branch file
+#   - options may go anywhere; -- ends them (for a value like --json)
 #   - set/unset write the current branch's file unless --global or --branch
 #   - set values are strings; --json takes a number, list, object or null
 #   - step: the harness's block, with the step's block for it laid over it
@@ -47,72 +48,78 @@ source "$(dirname "$(realpath "$0")")/../lib/pr-config.sh"
 die() { echo "pr-config: $*" >&2; exit 1; }
 help() { sed -n '3,/^$/s/^# \{0,1\}//p' "$0"; }
 usage() { help >&2; exit 1; }
+needs() { # needs <what>: say what's missing, then only this verb's usage lines
+  { echo "pr-config: $verb needs $*"; echo "Usage:"; help | grep "^  pr-config $verb "; } >&2
+  exit 1
+}
 
-# `|| exit $?` turns errexit off inside each prc_ call, as in pr-act and pr-watch.
 (( $# )) || usage
 verb=$1; shift
 case $verb in
-  -h|--help) help ;;
+  -h|--help) help; exit 0 ;;
+  get) takes="--no-branch --json" ;;
+  files|show) takes="--no-branch" ;;
+  step) takes="--harness" ;;
+  init) takes="--force --global" ;;
+  set) takes="--global --branch --json" ;;
+  unset) takes="--global --branch" ;;
+  *) die "unknown verb: $verb" ;;
+esac
+
+# Options may come anywhere among the arguments; -- ends them. Any other word
+# starting with -- is a value (harness args are).
+declare -A opt=()
+args=()
+while (( $# )); do
+  case $1 in
+    --) shift; args+=("$@"); break ;;
+    -h|--help) help; exit 0 ;;
+    --no-branch|--json|--harness|--force|--global|--branch)
+      [[ " $takes " == *" $1 "* ]] || die "$verb doesn't take $1"
+      if [[ $1 == --branch || $1 == --harness ]]; then
+        (( $# >= 2 )) || needs "a value for $1"
+        opt[$1]=$2; shift
+      else
+        opt[$1]=true
+      fi ;;
+    *) args+=("$1") ;;
+  esac
+  shift
+done
+set -- "${args[@]}"
+nobranch=${opt[--no-branch]:-false}
+
+# `|| exit $?` turns errexit off inside each prc_ call, as in pr-act and pr-watch.
+case $verb in
   get)
-    nobranch=false json=
-    while [[ ${1:-} == --* ]]; do
-      case $1 in
-        --no-branch) nobranch=true ;;
-        --json) json=json ;;
-        *) die "unknown option: $1" ;;
-      esac
-      shift
-    done
-    (( $# )) || usage
-    prc_get "$1" "${2:-}" "$nobranch" $json || exit $? ;;
+    (( $# == 1 || $# == 2 )) || needs "<path> [<branch>]"
+    prc_get "$1" "${2:-}" "$nobranch" ${opt[--json]:+json} || exit $? ;;
   files|show)
-    nobranch=false
-    if [[ ${1:-} == --no-branch ]]; then nobranch=true; shift; fi
+    (( $# <= 1 )) || needs "at most a <branch>"
     if [[ $verb == files ]]; then
       prc_paths "${1:-}" "$nobranch" || exit $?
     else
       prc_show "${1:-}" "$nobranch" || exit $?
     fi ;;
   step)
-    forced=
-    if [[ ${1:-} == --harness ]]; then (( $# >= 2 )) || usage; forced=$2; shift 2; fi
-    (( $# )) || usage
-    prc_step "$1" "${2:-}" "$forced" || exit $? ;;
+    (( $# == 1 || $# == 2 )) || needs "<step> [<branch>]"
+    prc_step "$1" "${2:-}" "${opt[--harness]:-}" || exit $? ;;
   init)
-    force=false global=false
-    while [[ ${1:-} == --* ]]; do
-      case $1 in
-        --force) force=true ;;
-        --global) global=true ;;
-        *) die "unknown option: $1" ;;
-      esac
-      shift
-    done
-    if $global; then
-      (( $# == 0 )) || usage
-      prc_init_global "$force" || exit $?
+    if [[ -n ${opt[--global]:-} ]]; then
+      (( $# == 0 )) || needs "no <branch> with --global"
+      prc_init_global "${opt[--force]:-false}" || exit $?
     else
+      (( $# <= 1 )) || needs "at most a <branch>"
       branch=$(prc_branch_arg "${1:-}") || exit $?
-      prc_init "$force" "$branch" || exit $?
+      prc_init "${opt[--force]:-false}" "$branch" || exit $?
     fi ;;
   set|unset)
-    global=false json=false branch=
-    while [[ ${1:-} == --* ]]; do
-      case $1 in
-        --global) global=true ;;
-        --branch) (( $# >= 2 )) || usage; branch=$2; shift ;;
-        --json) [[ $verb == set ]] || die "unknown option: $1"; json=true ;;
-        *) die "unknown option: $1" ;;
-      esac
-      shift
-    done
-    file=$(prc_target_file "$global" "$branch") || exit $?
+    file=$(prc_target_file "${opt[--global]:-false}" "${opt[--branch]:-}") || exit $?
     if [[ $verb == unset ]]; then
-      (( $# == 1 )) || usage
+      (( $# == 1 )) || needs "<path>"
       prc_unset "$file" "$1" || exit $?
     else
-      (( $# == 2 )) || usage
-      prc_set "$file" "$1" "$2" "$json" || exit $?
+      (( $# == 2 )) || needs "<path> <value>"
+      prc_set "$file" "$1" "$2" "${opt[--json]:-false}" || exit $?
     fi ;;
-  *) die "unknown verb: $verb" ;;
 esac
