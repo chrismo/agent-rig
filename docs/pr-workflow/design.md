@@ -804,8 +804,13 @@ short-lived, so it can't own children like their daemons do. Plan:
   today a step names a harness and its block.
 - **CI as a glyph on the one-liner** (tabled 2026-10-13): `✅` / `🔴` instead of
   `CI green` / `CI red`, for agent status lines.
-- **Clearing `i` items without a reply** (`pr-act ack`?): held until `--long`
-  has been used for a while.
+- **`ack` as a human stop, once the loop runs on its own** (raised 2026-10-13).
+  `pr-act ack` (built 2026-10-13) marks `i` items read with no reply, and NEXT
+  hands info-only bot items to chrismo (`read … then ack`). On important PRs that
+  stop must stay: an approving bot review can still carry a suggestion worth a
+  human read. On vibe-friendly tasks it may not be needed: the watcher could
+  ack on its own, or an agent could triage `i` items. Revisit with a per-PR
+  signal, likely the same label that steers J5.
 - **TODO: move `pr-state`, `pr-act` and `pr-watch` from `jq` to SuperDB.**
   Decided 2026-10-13: SuperDB, always. `pr-config` is done. The rest still shell
   out to `jq`, including the `CLASSIFY` filter and the GraphQL shaping. Not part

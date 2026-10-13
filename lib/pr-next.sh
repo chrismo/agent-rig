@@ -10,6 +10,7 @@
 
 # Behind the default branch alone is no step: it moves too often to chase.
 # A conflict with it is, and so is a restack after the parent merged.
+# Only bot items are ever marked i, so owed_bot - info is the blocking bot count.
 # null and missing fields compare as errors in SuperDB; on() and n() make them false and 0.
 PRN_QUERY='fn on(x): coalesce(x, false)
 fn n(x): coalesce(x, 0)
@@ -20,6 +21,7 @@ fn trails(p): on(p.status in ["uncovered", "rewritten-changed", "unknown"])
 values {...s, remote}
 | put open:=(pr is null or on(pr.state == "OPEN")), has_pr:=on(pr.state == "OPEN"),
       foreign:=(on(push.remote_ours == false) and n(push.behind) > 0),
+      bot_blocking:=(n(threads.owed_bot) - n(threads.info)),
       to_push:=(push.remote_sha is null or n(push.ahead) > 0),
       chase:=(on(sync.target != sync.default) or on(parent.merged)),
       restack:=(sync.old_base is null ? f"git rebase {remote}/{sync.target}"
@@ -44,8 +46,10 @@ values {...s, remote}
       ? step("behind", "run", f"restack onto {sync.target} ({sync.behind} behind)", restack) : null,
     has_pr and on(ci.verdict == "red")
       ? step("ci-red", "agent", f"fix CI: {join(ci.failing, ", ")}", "gh pr checks") : null,
-    open and n(threads.owed_bot) > 0
+    open and bot_blocking > 0
       ? step("bot", "agent", f"address {plural(threads.owed_bot, "bot item")}", "pr-act address") : null,
+    open and bot_blocking == 0 and n(threads.info) > 0
+      ? step("read", "you", f"read {plural(threads.info, "bot item")} in pr-state --long, then ack", "pr-act ack") : null,
     open and not foreign and to_push
       ? (push.remote_sha is null ? step("push", "run", f"push: not on {remote} yet", f"git push -u {remote} {branch}")
          : on(push.diverged) ? step("push", "run", f"force-push {plural(push.ahead, "commit")} (rewritten)", "git push --force-with-lease")

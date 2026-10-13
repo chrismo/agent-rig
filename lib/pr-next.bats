@@ -120,6 +120,18 @@ STACKED=('.parent.name = "base"' '.sync.target = "base"' '.sync.up_to_date = fal
   [ "$(step bot cmd '.threads.owed_bot = 3')" = "pr-act address" ]
 }
 
+@test "bot items that are only info: chrismo reads them, then acks" {
+  [ "$(keys '.threads.owed_bot = 2' '.threads.info = 2')" = read ]
+  [ "$(step read who '.threads.owed_bot = 2' '.threads.info = 2')" = you ]
+  [ "$(step read say '.threads.owed_bot = 2' '.threads.info = 2')" = "read 2 bot items in pr-state --long, then ack" ]
+  [ "$(step read cmd '.threads.owed_bot = 2' '.threads.info = 2')" = "pr-act ack" ]
+}
+
+@test "blocking and info bot items together: address takes them all" {
+  [ "$(keys '.threads.owed_bot = 3' '.threads.info = 1')" = bot ]
+  [ "$(step bot say '.threads.owed_bot = 3' '.threads.info = 1')" = "address 3 bot items" ]
+}
+
 @test "unpushed commits: push" {
   [ "$(step push say '.push.ahead = 2')" = "push 2 commits" ]
   [ "$(step push cmd '.push.ahead = 2')" = "git push" ]
