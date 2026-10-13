@@ -59,7 +59,7 @@ ps_fixture() {
   local b=$1; shift
   local j
   j=$(jq -n --arg b "$b" '{
-    branch: $b, pr: {number: 7, state: "OPEN", draft: false},
+    branch: $b, pr: {number: 7, state: "OPEN", draft: false, merge_state: "CLEAN", review_decision: null, review_requests: []},
     parent: {name: "main", merged: false},
     sync: {target: "main", default: "main", behind: 0, up_to_date: true, conflict: false},
     push: {remote_sha: "abc", ahead: 0, behind: 0, diverged: false, remote_ours: true},
@@ -248,6 +248,20 @@ notified() { cat "$PS_FIXTURES/notified" 2>/dev/null || true; }
   pass
   [ "$(glyph repo)" = "⚠️" ]
   grep -q "feat.*no next steps" "$PR_TEND_STATE_DIR/last-pass"
+}
+
+@test "glyph: waiting on a required review is ⏳, never ✅" {
+  ps_fixture feat '.pr.merge_state = "BLOCKED" | .pr.review_decision = "REVIEW_REQUIRED" | .pr.review_requests = ["alice"]'
+  pass
+  [ "$(glyph repo)" = "⏳" ]
+  [ -z "$(notified)" ]
+}
+
+@test "glyph: GitHub blocking the merge for another reason is 🔧, never ✅" {
+  ps_fixture feat '.pr.merge_state = "BLOCKED"'
+  pass
+  [ "$(glyph repo)" = "🔧" ]
+  [ -z "$(notified)" ]
 }
 
 @test "glyph: a draft is never ready" {

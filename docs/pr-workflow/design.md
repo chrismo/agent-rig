@@ -605,12 +605,13 @@ not built; a pass only observes and reports:
     from the raw fields, so the tab and `NEXT` can't disagree (2026-10-13).
   - ❌ needs chrismo: any `ci-red`, `conflict`, `human` or `foreign` step.
   - ⚠️ unknown: an `errors` or `stale` step, or no steps at all.
-  - ⏳ CI running: `ci-wait` is the only step.
+  - ⏳ waiting: every step is a `wait` (CI running, a required review, GitHub
+    still computing mergeability).
   - ✅ ready: `ready` is the only step.
   - 🏁 merged · 🚫 closed.
   - 🔧 work for later: anything else (restack onto a stacked parent, push, bot
     items, info items to read and ack, open a PR, draft, review not covered,
-    cancelled CI).
+    cancelled CI, GitHub blocking the merge for another reason).
 - Notifications (N2, macOS by default, `settings.notify` overrides) only for a
   step that wasn't there last pass (N3), keyed by step and worded by its `say`:
   the ❌ steps, merged, ready to merge.
@@ -809,33 +810,31 @@ short-lived, so it can't own children like their daemons do. Plan:
 
 ## Known issues
 
-- **BUG: NEXT and pr-watch's ✅ say "ready to merge" when GitHub blocks the
-  merge** (found 2026-10-13, PR dscout/dscout#30055). GitHub reported
-  `reviewDecision: REVIEW_REQUIRED` and `mergeStateStatus: BLOCKED` (review
-  requested from a human, no approval yet). `pr-state` printed `NEXT  you
-  ready to merge`. Causes:
-  - `pr-state` fetches only `mergeable`, which means "no conflicts". It never
-    asks for `reviewDecision`, `mergeStateStatus` or requested reviewers.
-  - In `lib/pr-next.sh`, `ready` is what's left when no other step applies,
-    not something GitHub confirmed. pr-watch's `CLASSIFY` falls through to ✅
-    the same way.
+- **FIXED 2026-10-13: NEXT and pr-watch's ✅ said "ready to merge" when GitHub
+  blocked the merge** (found on PR dscout/dscout#30055: `reviewDecision:
+  REVIEW_REQUIRED`, `mergeStateStatus: BLOCKED`). `pr-state` asked only for
+  `mergeable` ("no conflicts"), and `ready` was what was left when no other step
+  applied.
+  - `pr-state` now reports `.pr.merge_state`, `.pr.review_decision` and
+    `.pr.review_requests` (logins and team slugs).
+  - `ready` only when `merge_state` is `CLEAN`, `UNSTABLE` or `HAS_HOOKS`.
+    Otherwise the last step is:
+    - review required → `wait  waiting on review from <who>`, listed even
+      behind other steps. A "nudge them" step after N hours could come later.
+    - `UNKNOWN` (or missing) → `wait  GitHub hasn't decided whether it can
+      merge yet`
+    - anything else (`BLOCKED`, `BEHIND`, `DIRTY`, …) → `you  GitHub says …:
+      see why → gh pr view --web`
+    The last two, like `ready`, only show when nothing else does: a pending or
+    red CI already explains a `BLOCKED`.
+  - pr-watch: ⏳ when every step is a wait; `blocked` is 🔧. Checked read-only
+    on cli/cli#14640 (`REVIEW_REQUIRED` / `BLOCKED`, two users requested).
 
-  Fix:
-  1. `pr-state` adds `reviewDecision`, `mergeStateStatus` and
-     `reviewRequests` to its query, exposed under `.pr`.
-  2. `ready` only when `mergeStateStatus` allows a merge: `CLEAN`, and probably
-     `UNSTABLE` / `HAS_HOOKS`. Otherwise:
-     - `REVIEW_REQUIRED` → `wait  waiting on review from <who>`. A "nudge them"
-       step after N hours could come later.
-     - other `BLOCKED` → `you  GitHub says blocked → gh pr view --web`
-     - `UNKNOWN` → `wait`, never ready
-  3. pr-watch's ✅ follows the same rule.
-
-  Related, untested: `mergeStateStatus: BEHIND` may be the evidence that
-  makes "behind the default branch" a real step, on repos that require
-  up-to-date branches. #30055 was 50 behind main and still reported `BLOCKED`.
-  So either dscout doesn't require it, or `BLOCKED` takes precedence. Check on
-  a real PR before relying on it.
+  Still untested: `mergeStateStatus: BEHIND` may be the evidence that makes
+  "behind the default branch" a real step, on repos that require up-to-date
+  branches. #30055 was 50 behind main and still reported `BLOCKED`. So either
+  dscout doesn't require it, or `BLOCKED` takes precedence. Today `BEHIND`
+  alone gives the generic "GitHub says the branch is behind" step.
 - **`pr-state`: a clone of your own fork may not find the PR (untested).** If
   a repo is cloned from your own fork, gh may query the fork instead of the
   upstream project, so the PR wouldn't be found.

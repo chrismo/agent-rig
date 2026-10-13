@@ -52,6 +52,9 @@ query($owner: String!, $repo: String!, $branch: String!) {
     pullRequests(headRefName: $branch, first: 10, orderBy: {field: CREATED_AT, direction: DESC}) {
       nodes {
         number url state isDraft isCrossRepository headRepositoryOwner { login } baseRefName headRefOid mergeable mergedAt
+        mergeStateStatus reviewDecision
+        reviewRequests(first: 20) { nodes { requestedReviewer {
+          ... on User { login } ... on Bot { login } ... on Mannequin { login } ... on Team { slug } } } }
         commits(last: 1) { nodes { commit { oid statusCheckRollup { state contexts(first: 100) { nodes {
           __typename
           ... on CheckRun { name status conclusion }
@@ -325,7 +328,9 @@ state=$(jq -n \
       branch: $branch, head: $head,
       pr: (if $pr == null then null else
              {number: $pr.number, url: $pr.url, state: $pr.state, draft: $pr.isDraft,
-              base: $pr.baseRefName, head_sha: $pr.headRefOid, mergeable: $pr.mergeable} end),
+              base: $pr.baseRefName, head_sha: $pr.headRefOid, mergeable: $pr.mergeable,
+              merge_state: $pr.mergeStateStatus, review_decision: $pr.reviewDecision,
+              review_requests: [$pr.reviewRequests.nodes // [] | .[].requestedReviewer // {} | .login // .slug // empty]} end),
       parent: {name: $parent, source: $parent_source, merged: $parent_merged,
                pr: (if $parent_pr == null then null else
                       {number: $parent_pr.number, state: $parent_pr.state, head_sha: $parent_pr.headRefOid} end)},

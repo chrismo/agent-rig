@@ -18,12 +18,16 @@ fn plural(k, w): f"{k} {w}{k == 1 ? "" : "s"}"
 fn step(key, who, say, cmd): {key: key, who: who, say: say, cmd: cmd}
 fn covers(p): on(p.status in ["covered", "rewritten-same"])
 fn trails(p): on(p.status in ["uncovered", "rewritten-changed", "unknown"])
+fn why_blocked(m): m == "BLOCKED" ? "the merge is blocked" : m == "BEHIND" ? "the branch is behind"
+                   : m == "DIRTY" ? "there are conflicts" : m == "DRAFT" ? "it'"'"'s a draft" : lower(m)
 values {...s, remote}
 | put open:=(pr is null or on(pr.state == "OPEN")), has_pr:=on(pr.state == "OPEN"),
       foreign:=(on(push.remote_ours == false) and n(push.behind) > 0),
       bot_blocking:=(n(threads.owed_bot) - n(threads.info)),
       to_push:=(push.remote_sha is null or n(push.ahead) > 0),
       chase:=(on(sync.target != sync.default) or on(parent.merged)),
+      merge_state:=coalesce(pr.merge_state, "UNKNOWN"),
+      review_required:=on(pr.review_decision == "REVIEW_REQUIRED"),
       restack:=(sync.old_base is null ? f"git rebase {remote}/{sync.target}"
                 : f"git rebase --onto {remote}/{sync.target} {sync.old_base[0:12]}"),
       need_review:=((trails(review.local) or trails(review.bot) or trails(review.accepted))
@@ -62,12 +66,18 @@ values {...s, remote}
     has_pr and not to_push and (on(ci.verdict == "pending") or on(ci.for_head == false))
       ? step("ci-wait", "wait", on(ci.verdict == "pending") ? "CI running" : "CI hasn'"'"'t reported on HEAD yet",
              "gh pr checks --watch") : null,
-    has_pr ? step("ready", "you", "ready to merge", "gh pr merge") : null
+    has_pr and review_required
+      ? step("review-wait", "wait", len(coalesce(pr.review_requests, [])) > 0
+             ? f"waiting on review from {join(pr.review_requests, ", ")}" : "waiting on a required review", null) : null,
+    has_pr and not review_required
+      ? (merge_state in ["CLEAN", "UNSTABLE", "HAS_HOOKS"] ? step("ready", "you", "ready to merge", "gh pr merge")
+         : merge_state == "UNKNOWN" ? step("merge-wait", "wait", "GitHub hasn'"'"'t decided whether it can merge yet", null)
+         : step("blocked", "you", f"GitHub says {why_blocked(merge_state)}: see why", "gh pr view --web")) : null
   ]
 | where this is not null
 | aggregate steps:=collect(this)
 | values coalesce(steps, [])
-| values (len(this) > 1 and this[len(this)-1].key == "ready") ? this[0:len(this)-1] : this'
+| values (len(this) > 1 and this[len(this)-1].key in ["ready", "merge-wait", "blocked"]) ? this[0:len(this)-1] : this'
 
 # prn_next <remote>: pr-state JSON on stdin; prints the steps as a JSON array, first is next.
 prn_next() {

@@ -13,7 +13,7 @@
 #   install    launchd job: a pass every settings.interval seconds (default 300)
 #   uninstall  remove the job
 #
-# Glyphs: ❌ needs chrismo   ⚠️ state unknown   🔧 work for later   ⏳ CI running
+# Glyphs: ❌ needs chrismo   ⚠️ state unknown   🔧 work for later   ⏳ waiting (CI, review)
 #         ✅ ready to merge  🏁 merged          🚫 closed
 # Notified: CI red, restack conflict, human items, foreign push, merged,
 # ready to merge.
@@ -45,7 +45,7 @@ else [.next[].key] as $k
   elif $red != [] then {glyph: "❌", reasons: $red}
   elif any($k[]; IN("errors", "stale")) then {glyph: "⚠️", reasons: []}
   elif $k == ["ready"] then {glyph: "✅", reasons: [{key: "ready", msg: .next[0].say}]}
-  elif $k == ["ci-wait"] then {glyph: "⏳", reasons: []}
+  elif all(.next[]; .who == "wait") then {glyph: "⏳", reasons: []}
   else {glyph: "🔧", reasons: []}
   end
 end

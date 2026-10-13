@@ -10,7 +10,8 @@ setup() {
   source "$BATS_TEST_DIRNAME/pr-config.sh"
   source "$BATS_TEST_DIRNAME/pr-next.sh"
   READY='{"branch": "feat", "head": "h1",
-    "pr": {"number": 7, "url": "u", "state": "OPEN", "draft": false, "base": "main", "head_sha": "h1", "mergeable": "MERGEABLE"},
+    "pr": {"number": 7, "url": "u", "state": "OPEN", "draft": false, "base": "main", "head_sha": "h1", "mergeable": "MERGEABLE",
+           "merge_state": "CLEAN", "review_decision": null, "review_requests": []},
     "parent": {"name": "main", "source": "pr", "merged": false, "pr": null},
     "sync": {"target": "main", "default": "main", "behind": 0, "up_to_date": true, "old_base": "b0b0b0b0b0b0b0b0", "conflict": false},
     "push": {"remote_sha": "h1", "ahead": 0, "behind": 0, "diverged": false, "remote_ours": true},
@@ -39,6 +40,37 @@ step() { # step <key> <field> <jq-assignment...>
   [ "$(keys)" = ready ]
   [ "$(step ready who)" = you ]
   [ "$(step ready cmd)" = "gh pr merge" ]
+}
+
+@test "ready: only when GitHub would merge it (clean, unstable or has hooks)" {
+  [ "$(keys '.pr.merge_state = "UNSTABLE"')" = ready ]
+  [ "$(keys '.pr.merge_state = "HAS_HOOKS"')" = ready ]
+  [ "$(keys '.pr.merge_state = "BLOCKED"')" = blocked ]
+  [ "$(keys '.pr.merge_state = "UNKNOWN"')" = merge-wait ]
+  [ "$(keys 'del(.pr.merge_state)')" = merge-wait ]
+}
+
+@test "review required: wait on the requested reviewers, never ready" {
+  local req=('.pr.merge_state = "BLOCKED"' '.pr.review_decision = "REVIEW_REQUIRED"')
+  [ "$(keys "${req[@]}" '.pr.review_requests = ["alice", "core-team"]')" = review-wait ]
+  [ "$(step review-wait who "${req[@]}")" = wait ]
+  [ "$(step review-wait say "${req[@]}" '.pr.review_requests = ["alice", "core-team"]')" \
+    = "waiting on review from alice, core-team" ]
+  [ "$(step review-wait say "${req[@]}")" = "waiting on a required review" ]
+}
+
+@test "review required stays listed behind other steps; ready-like ends don't" {
+  [ "$(keys '.ci.verdict = "pending"' '.pr.merge_state = "BLOCKED"' '.pr.review_decision = "REVIEW_REQUIRED"')" \
+    = "ci-wait review-wait" ]
+  [ "$(keys '.ci.verdict = "pending"' '.pr.merge_state = "BLOCKED"')" = ci-wait ]
+  [ "$(keys '.ci.verdict = "pending"' '.pr.merge_state = "UNKNOWN"')" = ci-wait ]
+}
+
+@test "blocked for another reason: chrismo looks on GitHub" {
+  [ "$(step blocked who '.pr.merge_state = "BLOCKED"' '.pr.review_decision = "APPROVED"')" = you ]
+  [ "$(step blocked say '.pr.merge_state = "BLOCKED"')" = "GitHub says the merge is blocked: see why" ]
+  [ "$(step blocked say '.pr.merge_state = "BEHIND"')" = "GitHub says the branch is behind: see why" ]
+  [ "$(step blocked cmd '.pr.merge_state = "BLOCKED"')" = "gh pr view --web" ]
 }
 
 @test "every step has key, who, say and cmd" {

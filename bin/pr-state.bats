@@ -70,6 +70,7 @@ pr_fixture() {
   node=$(jq -n --arg head "$head" '{
     number: 7, url: "https://example/pr/7", state: "OPEN", isDraft: false, isCrossRepository: false,
     baseRefName: "main", headRefOid: $head, mergeable: "MERGEABLE", mergedAt: null,
+    mergeStateStatus: "CLEAN", reviewDecision: null, reviewRequests: {nodes: []},
     commits: {nodes: [{commit: {oid: $head, statusCheckRollup: null}}]},
     reviewThreads: {nodes: []}
   }')
@@ -147,6 +148,20 @@ field() { jq -r "$@" <<<"$output"; }
   [ "$(field .pr.draft)" = true ]
   [ "$(field .pr.base)" = main ]
   [ "$(field .pr.mergeable)" = MERGEABLE ]
+  [ "$(field .pr.merge_state)" = CLEAN ]
+  [ "$(field .pr.review_decision)" = null ]
+}
+
+@test "PR merge gate: merge state, review decision and who's requested" {
+  git switch -qc feat
+  commit a.txt a
+  pr_fixture feat '.mergeStateStatus = "BLOCKED" | .reviewDecision = "REVIEW_REQUIRED"' \
+    '.reviewRequests.nodes = [{requestedReviewer: {__typename: "User", login: "alice"}},
+                              {requestedReviewer: {__typename: "Team", slug: "core"}}]'
+  state
+  [ "$(field -c '.pr | {merge_state, review_decision, review_requests}')" \
+    = '{"merge_state":"BLOCKED","review_decision":"REVIEW_REQUIRED","review_requests":["alice","core"]}' ]
+  [ "$(field '[.next[].key] | any(. == "review-wait") and all(. != "ready")')" = true ]
 }
 
 @test "an open PR is preferred over a newer closed one for the same branch" {
