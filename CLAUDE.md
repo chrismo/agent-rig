@@ -20,6 +20,14 @@ bats hooks/use-dedicated-tools.bats
 
 **Important:** The hook writes logs to `~/.claude/logs/`, which is outside the sandbox write-allow list. Bats tests must run with sandbox disabled (`dangerouslyDisableSandbox: true`) or they will all fail because the hook crashes on the blocked log writes.
 
+**Run the pr-* suites in parallel.** One at a time they take about 7 minutes;
+`--jobs` (needs GNU `parallel`, `brew install parallel`) brings the full set down to
+83 s on a 10-core machine (2026-10-13):
+
+```bash
+bats --jobs 10 lib/pr-next.bats bin/pr-*.bats
+```
+
 **Not every suite here is bats.** `pi/footer.test.mjs` covers
 `pi/extensions/personal-footer.ts` and runs under `node:test`, because the
 extension is TypeScript loaded by pi rather than a shell script. A bats-only run

@@ -1077,26 +1077,34 @@ old_super() {
 # ── lib/pr-config.sh: sourced by pr-act, pr-watch and pr-state ─────────────
 
 # Callers use `x=$(prc_... ) || die`, where bash turns errexit off inside the
-# function, so every failure has to come back as a status.
+# function, so every failure has to come back as a status. bats can't fail a
+# test while errexit is off, so these collect statuses and assert after set -e.
 @test "lib: errors come back as status 1 with errexit off" {
   source "$BATS_TEST_DIRNAME/../lib/pr-config.sh"
+  local s=()
   set +e
   printf '{not json\n' > "$PR_TEND_CONFIG"
-  out=$(prc_get settings.verify feat false); [ $? -eq 1 ]
-  out=$(prc_step describe feat ""); [ $? -eq 1 ]
+  out=$(prc_get settings.verify feat false); s+=($?)
+  out=$(prc_step describe feat ""); s+=($?)
   rm "$PR_TEND_CONFIG"
   cd "$TMP"
-  out=$(prc_step describe somebranch ""); [ $? -eq 1 ]
-  out=$(prc_get 'a..b' "" true); [ $? -eq 1 ]
+  out=$(prc_step describe somebranch ""); s+=($?)
+  out=$(prc_get 'a..b' "" true); s+=($?)
+  set -e
+  [ "${s[*]}" = "1 1 1 1" ]
 }
 
 @test "lib: unset is status 3, a value is status 0" {
   source "$BATS_TEST_DIRNAME/../lib/pr-config.sh"
+  local s=() remote bots
   set +e
-  out=$(prc_get settings.foo feat false); [ $? -eq 3 ]
-  out=$(prc_get settings.remote feat false); [ $? -eq 0 ]
-  [ "$out" = origin ]
-  out=$(prc_get settings.botLogin feat false json); [ "$out" = '[]' ]
+  out=$(prc_get settings.foo feat false); s+=($?)
+  remote=$(prc_get settings.remote feat false); s+=($?)
+  bots=$(prc_get settings.botLogin feat false json); s+=($?)
+  set -e
+  [ "${s[*]}" = "3 0 0" ]
+  [ "$remote" = origin ]
+  [ "$bots" = '[]' ]
 }
 
 @test "lib: sourcing it runs nothing and leaves the shell options alone" {
