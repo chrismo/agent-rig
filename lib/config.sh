@@ -9,8 +9,9 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLAUDE_DIR="${CLAUDE_DIR:-$HOME/.claude}"
 SETTINGS_FILE="$CLAUDE_DIR/settings.json"
 
-PERMISSIONS_ALLOW="$REPO_DIR/permissions/allow.sup"
-PERMISSIONS_DENY="$REPO_DIR/permissions/deny.sup"
+PERMISSIONS_DIR="${AGENT_RIG_PERMISSIONS_DIR:-$REPO_DIR/permissions}"
+PERMISSIONS_ALLOW="$PERMISSIONS_DIR/allow.sup"
+PERMISSIONS_DENY="$PERMISSIONS_DIR/deny.sup"
 
 SANDBOX_ALLOW_WRITE="$REPO_DIR/sandbox/allow-write.sup"
 

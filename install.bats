@@ -26,6 +26,10 @@ setup() {
   export AGENT_RIG_MCP_SHARED_CONFIG="$TEST_DIR/.config/mcp/mcp.json"
   export AGENT_SKILLS_DIR="$TEST_DIR/.agents/skills"
   export CODEX_SKILLS_DIR="$TEST_DIR/.codex/skills"
+  # Tests seed and harvest into a copy: writing the repo's own .sup files
+  # corrupts them when tests run in parallel.
+  export AGENT_RIG_PERMISSIONS_DIR="$TEST_DIR/permissions"
+  cp -R "$BATS_TEST_DIRNAME/permissions" "$AGENT_RIG_PERMISSIONS_DIR"
   mkdir -p "$CLAUDE_DIR"
 }
 
@@ -940,13 +944,8 @@ fake_bash() {
 # ── Existing user settings ────────────────────────────────────────────────────
 
 @test "permissions: deny.sup entries are merged when non-empty" {
-  echo '"Bash(rm -rf:*)"' > "$BATS_TEST_DIRNAME/permissions/deny.sup.test"
-  # Temporarily swap deny.sup
-  cp "$BATS_TEST_DIRNAME/permissions/deny.sup" "$BATS_TEST_DIRNAME/permissions/deny.sup.orig"
-  cp "$BATS_TEST_DIRNAME/permissions/deny.sup.test" "$BATS_TEST_DIRNAME/permissions/deny.sup"
+  echo '"Bash(rm -rf:*)"' > "$AGENT_RIG_PERMISSIONS_DIR/deny.sup"
   run_installer
-  cp "$BATS_TEST_DIRNAME/permissions/deny.sup.orig" "$BATS_TEST_DIRNAME/permissions/deny.sup"
-  rm -f "$BATS_TEST_DIRNAME/permissions/deny.sup.test" "$BATS_TEST_DIRNAME/permissions/deny.sup.orig"
   [ "$status" -eq 0 ]
   local denys
   denys=$(settings_get 'this.permissions.deny')
@@ -971,12 +970,8 @@ fake_bash() {
   }
 }
 EOF
-  echo '"Bash(rm -rf:*)"' > "$BATS_TEST_DIRNAME/permissions/deny.sup.test"
-  cp "$BATS_TEST_DIRNAME/permissions/deny.sup" "$BATS_TEST_DIRNAME/permissions/deny.sup.orig"
-  cp "$BATS_TEST_DIRNAME/permissions/deny.sup.test" "$BATS_TEST_DIRNAME/permissions/deny.sup"
+  echo '"Bash(rm -rf:*)"' > "$AGENT_RIG_PERMISSIONS_DIR/deny.sup"
   run_installer
-  cp "$BATS_TEST_DIRNAME/permissions/deny.sup.orig" "$BATS_TEST_DIRNAME/permissions/deny.sup"
-  rm -f "$BATS_TEST_DIRNAME/permissions/deny.sup.test" "$BATS_TEST_DIRNAME/permissions/deny.sup.orig"
   [ "$status" -eq 0 ]
   local denys
   denys=$(settings_get 'this.permissions.deny')
@@ -1116,21 +1111,18 @@ EOF
 
 HARVESTER="$BATS_TEST_DIRNAME/bin/harvest.sh"
 
-# Save and restore .sup files around harvest tests
-harvest_setup() {
-  cp "$BATS_TEST_DIRNAME/permissions/allow.sup" "$TEST_DIR/allow.sup.orig"
-  cp "$BATS_TEST_DIRNAME/permissions/deny.sup" "$TEST_DIR/deny.sup.orig"
-}
-
-harvest_teardown() {
-  cp "$TEST_DIR/allow.sup.orig" "$BATS_TEST_DIRNAME/permissions/allow.sup"
-  cp "$TEST_DIR/deny.sup.orig" "$BATS_TEST_DIRNAME/permissions/deny.sup"
+@test "harvest: writes into AGENT_RIG_PERMISSIONS_DIR, not the repo" {
+  cp "$BATS_TEST_DIRNAME/permissions/allow.sup" "$TEST_DIR/repo-allow.sup"
+  echo '{"permissions": {"allow": ["Bash(only-in-test:*)"]}}' > "$CLAUDE_DIR/settings.json"
+  run bash "$HARVESTER"
+  [ "$status" -eq 0 ]
+  grep -qF 'Bash(only-in-test:*)' "$AGENT_RIG_PERMISSIONS_DIR/allow.sup"
+  cmp "$BATS_TEST_DIRNAME/permissions/allow.sup" "$TEST_DIR/repo-allow.sup"
 }
 
 @test "harvest: extracts allow rules from settings.json" {
-  harvest_setup
   # Start with empty allow.sup so count is predictable
-  : > "$BATS_TEST_DIRNAME/permissions/allow.sup"
+  : > "$AGENT_RIG_PERMISSIONS_DIR/allow.sup"
   cat > "$CLAUDE_DIR/settings.json" <<'EOF'
 {
   "permissions": {
@@ -1139,13 +1131,11 @@ harvest_teardown() {
 }
 EOF
   run bash "$HARVESTER"
-  harvest_teardown
   [ "$status" -eq 0 ]
   [[ "$output" == *"3 allow rules"* ]]
 }
 
 @test "harvest: extracts deny rules from settings.json" {
-  harvest_setup
   cat > "$CLAUDE_DIR/settings.json" <<'EOF'
 {
   "permissions": {
@@ -1155,13 +1145,12 @@ EOF
 }
 EOF
   run bash "$HARVESTER"
-  harvest_teardown
   [ "$status" -eq 0 ]
   [[ "$output" == *"2 deny rules"* ]]
 }
 
 @test "harvest: dry-run does not modify files" {
-  harvest_setup
+  cp "$AGENT_RIG_PERMISSIONS_DIR/allow.sup" "$TEST_DIR/allow.sup.orig"
   cat > "$CLAUDE_DIR/settings.json" <<'EOF'
 {
   "permissions": {
@@ -1173,12 +1162,10 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"=== permissions/allow.sup"* ]] || false
   # File should be unchanged
-  diff "$BATS_TEST_DIRNAME/permissions/allow.sup" "$TEST_DIR/allow.sup.orig"
-  harvest_teardown
+  diff "$AGENT_RIG_PERMISSIONS_DIR/allow.sup" "$TEST_DIR/allow.sup.orig"
 }
 
 @test "harvest: handles missing deny gracefully" {
-  harvest_setup
   cat > "$CLAUDE_DIR/settings.json" <<'EOF'
 {
   "permissions": {
@@ -1187,15 +1174,13 @@ EOF
 }
 EOF
   run bash "$HARVESTER"
-  harvest_teardown
   [ "$status" -eq 0 ]
   [[ "$output" == *"No deny rules"* ]]
 }
 
 @test "harvest: merges with existing allow.sup entries" {
-  harvest_setup
   # Seed allow.sup with an entry NOT in settings.json
-  echo '"Bash(launchctl load:*)"' > "$BATS_TEST_DIRNAME/permissions/allow.sup"
+  echo '"Bash(launchctl load:*)"' > "$AGENT_RIG_PERMISSIONS_DIR/allow.sup"
   cat > "$CLAUDE_DIR/settings.json" <<'EOF'
 {
   "permissions": {
@@ -1205,8 +1190,7 @@ EOF
 EOF
   run bash "$HARVESTER"
   local result
-  result=$(cat "$BATS_TEST_DIRNAME/permissions/allow.sup")
-  harvest_teardown
+  result=$(cat "$AGENT_RIG_PERMISSIONS_DIR/allow.sup")
   [ "$status" -eq 0 ]
   # Both the existing entry and the harvested entry should be present
   [[ "$result" == *'"Bash(launchctl load:*)"'* ]] || false
@@ -1214,9 +1198,8 @@ EOF
 }
 
 @test "harvest: merges with existing deny.sup entries" {
-  harvest_setup
   # Seed deny.sup with an entry NOT in settings.json
-  echo '"Bash(sudo:*)"' > "$BATS_TEST_DIRNAME/permissions/deny.sup"
+  echo '"Bash(sudo:*)"' > "$AGENT_RIG_PERMISSIONS_DIR/deny.sup"
   cat > "$CLAUDE_DIR/settings.json" <<'EOF'
 {
   "permissions": {
@@ -1226,17 +1209,15 @@ EOF
 EOF
   run bash "$HARVESTER"
   local result
-  result=$(cat "$BATS_TEST_DIRNAME/permissions/deny.sup")
-  harvest_teardown
+  result=$(cat "$AGENT_RIG_PERMISSIONS_DIR/deny.sup")
   [ "$status" -eq 0 ]
   [[ "$result" == *'"Bash(sudo:*)"'* ]] || false
   [[ "$result" == *'"Bash(rm -rf:*)"'* ]]
 }
 
 @test "harvest: deduplicates entries" {
-  harvest_setup
   # Seed allow.sup with an entry that's also in settings.json
-  echo '"Write(.claude/tmp/*)"' > "$BATS_TEST_DIRNAME/permissions/allow.sup"
+  echo '"Write(.claude/tmp/*)"' > "$AGENT_RIG_PERMISSIONS_DIR/allow.sup"
   cat > "$CLAUDE_DIR/settings.json" <<'EOF'
 {
   "permissions": {
@@ -1246,8 +1227,7 @@ EOF
 EOF
   run bash "$HARVESTER"
   local result
-  result=$(cat "$BATS_TEST_DIRNAME/permissions/allow.sup")
-  harvest_teardown
+  result=$(cat "$AGENT_RIG_PERMISSIONS_DIR/allow.sup")
   [ "$status" -eq 0 ]
   # Write(.claude/tmp/*) should appear exactly once
   local count
