@@ -727,40 +727,18 @@ OLD_CHECKOUT() { echo "$TEST_DIR/old/claude-rig"; }
   [[ "$target" == "$BATS_TEST_DIRNAME/bin/claude-src" ]]
 }
 
-@test "bin: pr-state is symlinked from bin/" {
+# pr-tend moved to its own repo (2026-10-13); its ./install.sh links these now.
+@test "bin: pr-* links from an earlier install are removed" {
+  mkdir -p "$LOCAL_BIN"
+  local cmd
+  for cmd in pr-state pr-act pr-watch pr-config; do
+    ln -s "$BATS_TEST_DIRNAME/bin/$cmd" "$LOCAL_BIN/$cmd"
+  done
   run_installer
   [ "$status" -eq 0 ]
-  [ -L "$LOCAL_BIN/pr-state" ]
-  local target
-  target=$(readlink "$LOCAL_BIN/pr-state")
-  [[ "$target" == "$BATS_TEST_DIRNAME/bin/pr-state" ]]
-}
-
-@test "bin: pr-act is symlinked from bin/" {
-  run_installer
-  [ "$status" -eq 0 ]
-  [ -L "$LOCAL_BIN/pr-act" ]
-  local target
-  target=$(readlink "$LOCAL_BIN/pr-act")
-  [[ "$target" == "$BATS_TEST_DIRNAME/bin/pr-act" ]]
-}
-
-@test "bin: pr-watch is symlinked from bin/" {
-  run_installer
-  [ "$status" -eq 0 ]
-  [ -L "$LOCAL_BIN/pr-watch" ]
-  local target
-  target=$(readlink "$LOCAL_BIN/pr-watch")
-  [[ "$target" == "$BATS_TEST_DIRNAME/bin/pr-watch" ]]
-}
-
-@test "bin: pr-config is symlinked from bin/" {
-  run_installer
-  [ "$status" -eq 0 ]
-  [ -L "$LOCAL_BIN/pr-config" ]
-  local target
-  target=$(readlink "$LOCAL_BIN/pr-config")
-  [[ "$target" == "$BATS_TEST_DIRNAME/bin/pr-config" ]]
+  for cmd in pr-state pr-act pr-watch pr-config; do
+    [ ! -L "$LOCAL_BIN/$cmd" ]
+  done
 }
 
 @test "bin: analysis scripts in bin/ are not installed as commands" {

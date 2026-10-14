@@ -20,13 +20,9 @@ bats hooks/use-dedicated-tools.bats
 
 **Important:** The hook writes logs to `~/.claude/logs/`, which is outside the sandbox write-allow list. Bats tests must run with sandbox disabled (`dangerouslyDisableSandbox: true`) or they will all fail because the hook crashes on the blocked log writes.
 
-**Run the pr-* suites in parallel.** One at a time they take about 7 minutes;
-`--jobs` (needs GNU `parallel`, `brew install parallel`) brings the full set down to
-83 s on a 10-core machine (2026-10-13):
-
-```bash
-bats --jobs 10 lib/pr-next.bats bin/pr-*.bats
-```
+**The PR pipeline (`pr-state`, `pr-act`, `pr-watch`, `pr-config`) lives in its
+own repo now**, `~/modev/pr-tend` (2026-10-13), with its own `install.sh`.
+`tab-status` still reads the `<worktree>.pr` glyph file that `pr-watch` writes.
 
 **Not every suite here is bats.** `pi/footer.test.mjs` covers
 `pi/extensions/personal-footer.ts` and runs under `node:test`, because the
