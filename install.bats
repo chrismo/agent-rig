@@ -223,6 +223,24 @@ EOF
   [[ "$allows" == *"Edit(.claude/tmp/*)"* ]]
 }
 
+@test "permissions: retired.sup entries are removed, other rules kept" {
+  cat > "$CLAUDE_DIR/settings.json" <<'EOF'
+{
+  "permissions": {
+    "allow": ["Write(.claude/tmp/*)", "Skill(mta:join)", "Bash(git add:*)", "Bash(my-own:*)"]
+  }
+}
+EOF
+  run_installer
+  [ "$status" -eq 0 ]
+  local allows
+  allows=$(settings_get 'this.permissions.allow')
+  [[ "$allows" != *"Write(.claude/tmp/*)"* ]] || false
+  [[ "$allows" != *"Skill(mta:join)"* ]] || false
+  [[ "$allows" == *"Bash(my-own:*)"* ]] || false
+  [[ "$allows" == *"Edit(.claude/tmp/*)"* ]]
+}
+
 @test "permissions: existing defaultMode is preserved" {
   cat > "$CLAUDE_DIR/settings.json" <<'EOF'
 {

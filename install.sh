@@ -197,6 +197,26 @@ if [[ -f "$PERMISSIONS_ALLOW" ]]; then
   echo ""
 fi
 
+# Remove permissions/retired.sup entries from settings.json
+if [[ -f "$PERMISSIONS_RETIRED" ]] && grep -q '"allow"' "$SETTINGS_FILE"; then
+  new_settings=$(
+    super -J -c 'values {
+      ...this,
+      permissions: {
+        ...this.permissions,
+        allow: coalesce((
+          unnest this.permissions.allow
+          | where not (this in (from "'"$PERMISSIONS_RETIRED"'" | collect(this)))
+          | collect(this)
+        ), [])
+      }
+    }' "$SETTINGS_FILE"
+  )
+  echo "$new_settings" > "$SETTINGS_FILE"
+  echo "✓ Removed permissions listed in retired.sup"
+  echo ""
+fi
+
 # Merge permissions/deny.sup into settings.json (idempotent via sort | uniq)
 if [[ -f "$PERMISSIONS_DENY" ]] && grep -q '[^[:space:]]' "$PERMISSIONS_DENY"; then
   if grep -q '"deny"' "$SETTINGS_FILE"; then
