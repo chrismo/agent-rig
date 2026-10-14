@@ -687,14 +687,43 @@ machine's transition guards: the loop later calls the verb and the verb
 decides. Verbs are written headless from the start (structured outcome, no
 prompts, exit codes) so the watcher can call them unchanged.
 
+**Reordered 2026-10-13 for dogfooding.** The pipeline's first real work is
+building itself, so the order favours what keeps chrismo's own branches current
+and reviewed, and leaves for last what he already does by hand: starting work
+and creating PRs. Theory, not yet tested: it is drawn from the verbs' value, not
+from running them.
+
 1. `pr-state` — done
 2. `pr-watch` observe-only + glyph + notifications — done
 3. `pr-act address` (bot feedback) + harness adapter — done, see below
-4. `pr-act restack` + `push` incl. reconciliation (squash fixtures are the core risk)
-5. `pr-act verify` / `check` + `bin/pr-review-local`
-6. bot trigger, retarget, describe
-7. the loop: watcher dispatches verbs (below, "Process supervision")
-8. `pr-act start` + implement; `pr-act attach`
+4. **Bootstrap spike.** Enroll an existing branch with no `pr-act start` and
+   check that `pr-state` derives the missing records (A2 fallback chain). Every
+   later step assumes it works; if it doesn't, fix it first.
+5. `pr-act restack` + `push` incl. reconciliation (squash fixtures are the core
+   risk). Underway.
+6. **Retarget**, pulled out of the old step 6: after a parent merges, restack
+   onto `main` and change the PR's base. It is stack maintenance, so it sits
+   next to restack.
+7. `pr-act verify` — the zero-token half of the old step 5. Gates every later
+   step.
+8. `pr-act ship` + `describe` — push, `gh pr create`, and the description step.
+   After the other manual verbs because creating a PR by hand is the cheapest
+   thing chrismo does.
+9. Local review (`bin/pr-review-local`) — the model half of the old step 5. With
+   no bot, it is the only source of review findings.
+10. The loop: watcher dispatches verbs (below, "Process supervision"). After
+    4–9 because a verb has to behave by hand first.
+11. Bot trigger — waits until there is a bot to trigger.
+12. `pr-act start` + implement; `pr-act attach` — last; chrismo starts the work
+    himself while dogfooding.
+
+Two decisions sit outside the list and change it:
+
+- **Extract the pipeline into its own repo** (chrismo is considering it) before
+  step 6. Retarget and ship both touch the namespace and config paths, so
+  moving after them means the rename and the move happen twice.
+- **Settle the name** before step 5 lands. Each verb adds state under
+  `pr-tend.*`, and a rename means migrating it.
 
 ## `pr-act address` — built 2026-10-12
 
