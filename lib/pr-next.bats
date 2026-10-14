@@ -117,13 +117,17 @@ step() { # step <key> <field> <jq-assignment...>
 # A stacked branch: its parent is another branch, not the default.
 STACKED=('.parent.name = "base"' '.sync.target = "base"' '.sync.up_to_date = false' '.sync.behind = 3')
 
-@test "behind a stacked parent: restack onto it from the old base" {
+@test "behind a stacked parent: pr-act restack" {
   [ "$(step behind who "${STACKED[@]}")" = run ]
   [ "$(step behind say "${STACKED[@]}")" = "restack onto base (3 behind)" ]
-  [ "$(step behind cmd "${STACKED[@]}")" = "git rebase --onto origin/base b0b0b0b0b0b0" ]
+  [ "$(step behind cmd "${STACKED[@]}")" = "pr-act restack" ]
 }
 
-@test "behind with no old base: a plain rebase" {
+@test "a conflicting restack shows the rebase to resolve by hand" {
+  [ "$(step conflict cmd "${STACKED[@]}" '.sync.conflict = true')" = "git rebase --onto origin/base b0b0b0b0b0b0" ]
+}
+
+@test "behind with no old base: a plain rebase, which pr-act restack refuses" {
   [ "$(step behind cmd "${STACKED[@]}" '.sync.old_base = null')" = "git rebase origin/base" ]
 }
 
@@ -167,17 +171,19 @@ STACKED=('.parent.name = "base"' '.sync.target = "base"' '.sync.up_to_date = fal
   [ "$(step bot say '.threads.owed_bot = 3' '.threads.info = 1')" = "address 3 bot items" ]
 }
 
-@test "unpushed commits: push" {
+@test "unpushed commits: pr-act push" {
   [ "$(step push say '.push.ahead = 2')" = "push 2 commits" ]
-  [ "$(step push cmd '.push.ahead = 2')" = "git push" ]
+  [ "$(step push cmd '.push.ahead = 2')" = "pr-act push" ]
 }
 
-@test "rewritten history of our own: force-push with lease" {
-  [ "$(step push cmd '.push.ahead = 2' '.push.behind = 2' '.push.diverged = true')" = "git push --force-with-lease" ]
+@test "rewritten history of our own: pr-act push, which leases" {
+  [ "$(step push say '.push.ahead = 2' '.push.behind = 2' '.push.diverged = true')" = "force-push 2 commits (rewritten)" ]
+  [ "$(step push cmd '.push.ahead = 2' '.push.behind = 2' '.push.diverged = true')" = "pr-act push" ]
 }
 
-@test "never pushed: push and set upstream" {
-  [ "$(step push cmd '.push.remote_sha = null' '.push.ahead = 1' '.pr = null')" = "git push -u origin feat" ]
+@test "never pushed: pr-act push" {
+  [ "$(step push say '.push.remote_sha = null' '.push.ahead = 1' '.pr = null')" = "push: not on origin yet" ]
+  [ "$(step push cmd '.push.remote_sha = null' '.push.ahead = 1' '.pr = null')" = "pr-act push" ]
 }
 
 @test "no PR: push first, then open one" {
@@ -238,8 +244,8 @@ STACKED=('.parent.name = "base"' '.sync.target = "base"' '.sync.up_to_date = fal
 }
 
 @test "the remote and branch reach commands as data" {
-  [ "$(printf '%s\n' "$READY" | jq -c '.push.remote_sha = null | .push.ahead = 1 | .branch = "a\"b"' \
-        | prn_next 'up"x' | jq -r '.[] | select(.key == "push") | .cmd')" = 'git push -u up"x a"b' ]
+  [ "$(printf '%s\n' "$READY" | jq -c '.push.remote_ours = false | .push.behind = 1 | .branch = "a\"b"' \
+        | prn_next 'up"x' | jq -r '.[] | select(.key == "foreign") | .cmd')" = 'git log HEAD..up"x/a"b' ]
 }
 
 # ── prn_lines: the NEXT line(s) ──────────────────────────────────────────────
@@ -265,5 +271,5 @@ lines_for() { # lines_for <one|all> <jq-assignment...>
   run lines_for all '.push.ahead = 1' '.threads.owed_bot = 1'
   [ "${#lines[@]}" -eq 2 ]
   [ "${lines[0]}" = "NEXT  agent  address 1 bot item  → pr-act address" ]
-  [ "${lines[1]}" = "then  run    push 1 commit  → git push" ]
+  [ "${lines[1]}" = "then  run    push 1 commit  → pr-act push" ]
 }

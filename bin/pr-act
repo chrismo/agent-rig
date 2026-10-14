@@ -7,12 +7,15 @@
 #   pr-act unenroll [<branch>]
 #   pr-act address  [--force] [--no-publish] [--harness <h>] [<branch>]
 #   pr-act ack      [--id <id>]... [<branch>]
+#   pr-act restack  [--force] [<branch>]
+#   pr-act push     [--force] [<branch>]
 #
 # Examples:
 #   pr-act enroll                      pr-watch starts tracking this branch
 #   pr-act address --no-publish        the agent fixes locally; nothing pushed or posted
 #   pr-act address --harness pi
 #   pr-act ack                         after reading pr-state --long: the i items are done
+#   pr-act restack && pr-act push      catch up with the parent, then publish
 #
 # Verbs:
 #   enroll    mark the branch for pr-watch, and register this repo
@@ -21,9 +24,18 @@
 #             reply and resolve; items the agent marks "ask" are left for chrismo
 #   ack       mark owed bot review bodies and comments read, with no reply:
 #             every i item, or only the --id ones (ids from pr-state --json)
+#   restack   rebase --onto the parent (the default branch once the parent
+#             merged), check the branch's own change came through unchanged,
+#             else roll back; never pushes
+#   push      publish: a plain push for new commits; rewritten history is
+#             force-pushed with a lease, only over a remote head of our own.
+#             Never over commits that aren't yours, --force or not
+#
+# --force:
+#   address         run even if the branch is unpushed, diverged or taken over
+#   restack, push   run even if taken over
 #
 # address options:
-#   --force         run even if the branch is unpushed, diverged or taken over
 #   --no-publish    stop after the local commit (the agent still runs: tokens)
 #   --harness <h>   claude (default) or pi; remembered for the branch
 #
@@ -133,6 +145,15 @@ changed anything (else null), and outcome "done", "needs-input" (anything you
 marked ask) or "gave-up" (you couldn't make sense of it; nothing is posted).
 EOF
 
+# soft_gate <gate-json> <doing>: unless --force, list the soft refusals and exit.
+soft_gate() {
+  if $force || [[ $(jq '[.[] | .soft // empty] | length' <<<"$1") -eq 0 ]]; then return 0; fi
+  { echo "pr-act: not $2:"
+    jq -r '.[] | .soft // empty | "  - \(.)"' <<<"$1"
+    echo "(--force to run anyway)"; } >&2
+  exit 1
+}
+
 worktree_for() { # the worktree that has refs/heads/<branch> checked out
   git worktree list --porcelain \
     | awk -v ref="refs/heads/$1" '/^worktree / { wt = substr($0, 10) } $0 == "branch " ref { print wt; exit }'
@@ -173,12 +194,7 @@ address() {
     echo "nothing to address on $b ($(jq -r '.threads.owed_human // 0' <<<"$state") human item(s) are chrismo's)"
     return
   fi
-  if ! $force && [[ $(jq '[.[] | .soft // empty] | length' <<<"$gate") -gt 0 ]]; then
-    { echo "pr-act: not addressing $b:"
-      jq -r '.[] | .soft // empty | "  - \(.)"' <<<"$gate"
-      echo "(--force to run anyway)"; } >&2
-    exit 1
-  fi
+  soft_gate "$gate" "addressing $b"
   jq -r '.[] | .warn // empty | "pr-act: warning: \(.)"' <<<"$gate" >&2
 
   local -a id_args=()
@@ -265,9 +281,7 @@ address() {
     return
   fi
 
-  if [[ $(git -C "$wt" rev-parse HEAD) != "$(git -C "$wt" rev-parse -q --verify "refs/remotes/$remote/$b" || true)" ]]; then
-    git -C "$wt" push --quiet "$remote" "$b" || die "push failed; nothing posted"
-  fi
+  push_branch "$b" "$remote" || die "not pushed, so nothing posted"
   local prefix id failed=0 pr_id body=""
   prefix=$(prc_get settings.replyPrefix "$b" false) || die "pr-config failed"
   while IFS= read -r item; do
@@ -304,6 +318,129 @@ address() {
     fi
   fi
   return "$failed"
+}
+
+# ── push ─────────────────────────────────────────────────────────────────────
+
+plural() { if (( $1 == 1 )); then echo "1 $2"; else echo "$1 $2s"; fi; }
+
+# push_branch <branch> <remote>: publish <branch> as fetched just now. Rewritten
+# history is force-pushed with a lease on that remote head, and only when the
+# head is in the branch's reflog (we put it there). Never over others' commits.
+push_branch() {
+  local b=$1 remote=$2 rsha ahead behind n reflog theirs
+  git fetch --quiet --prune "$remote" || { echo "pr-act: fetch from $remote failed" >&2; return 1; }
+  rsha=$(git rev-parse -q --verify "refs/remotes/$remote/$b^{commit}" || true)
+  if [[ -z $rsha ]]; then
+    push_ref "$b" "$remote" "" -u || return
+    echo "pushed $b to $remote (new branch)"
+    return
+  fi
+  ahead=$(git rev-list --count "$rsha..refs/heads/$b")
+  behind=$(git rev-list --count "refs/heads/$b..$rsha")
+  if (( ahead == 0 && behind == 0 )); then
+    echo "nothing to push on $b"
+  elif (( ahead == 0 )); then
+    echo "pr-act: $remote/$b has $(plural "$behind" commit) you don't; take them with: git merge --ff-only $remote/$b" >&2
+    return 1
+  elif (( behind == 0 )); then
+    push_ref "$b" "$remote" "$rsha" || return
+    echo "pushed $b to $remote ($(plural "$ahead" commit))"
+  else
+    # Not piped into grep -q: under pipefail, git dying of SIGPIPE would read as "not ours".
+    reflog=$(git reflog show --format=%H "refs/heads/$b")
+    if ! grep -qx "$rsha" <<<"$reflog"; then
+      theirs=$(sed 's/^/^/' <<<"$reflog" | git rev-list --count --stdin "$rsha")
+      if (( theirs == 1 )); then n="1 commit that isn't"; else n="$theirs commits that aren't"; fi
+      echo "pr-act: $remote/$b has $n yours; not pushing over it." \
+           "Look: git log $b..$remote/$b, then bring it into $b" >&2
+      return 1
+    fi
+    push_ref "$b" "$remote" "$rsha" --force-with-lease="refs/heads/$b:$rsha" || return
+    echo "force-pushed $b to $remote (rewritten; the remote head ${rsha:0:7} was ours)"
+  fi
+}
+
+# push_ref <branch> <remote> <expected-remote-sha> [push options...]
+push_ref() {
+  local b=$1 remote=$2 expected=$3 err now
+  shift 3
+  if ! err=$(git push --quiet "$@" "$remote" "refs/heads/$b:refs/heads/$b" 2>&1); then
+    now=$(git ls-remote "$remote" "refs/heads/$b" 2>/dev/null | cut -f1)
+    if [[ $now != "$expected" ]]; then
+      echo "pr-act: $remote/$b moved while pushing; nothing pushed. Run it again to see what changed" >&2
+    else
+      echo "pr-act: push to $remote failed: ${err//$'\n'/ }" >&2
+    fi
+    return 1
+  fi
+}
+
+push() {
+  local remote
+  git rev-parse -q --verify "refs/heads/$branch" >/dev/null || die "no such branch: $branch"
+  if ! $force && [[ -n $(git config --get "branch.$branch.pr-lock" || true) ]]; then
+    die "not pushing $branch: taken over (branch.$branch.pr-lock is set; --force to push anyway)"
+  fi
+  remote=$(prc_get settings.remote "$branch" false) || die "pr-config failed"
+  push_branch "$branch" "$remote" || exit 1
+}
+
+# ── restack ──────────────────────────────────────────────────────────────────
+
+# -U0: an upstream edit next to the branch's lines must not read as a change.
+patch_id() { git diff -U0 "$1" "$2" | git patch-id --stable | cut -d' ' -f1; }
+
+read -r -d '' RESTACK_GATE <<'EOF' || true
+(.errors // [] | join("; ")) as $why
+| "\($remote)/\(.sync.target)" as $onto
+| [ if .parent.merged == null and .parent.name != .sync.default
+      then {hard: "can't tell whether \(.parent.name) merged: \($why)"} else empty end,
+    if .sync.up_to_date == null or (.sync.up_to_date == false and .sync.old_base == null)
+      then {hard: "can't restack \(.branch): \($why)"}
+    elif .sync.up_to_date then {done: "\(.branch) is already on \($onto)"}
+    elif .sync.conflict == null then {hard: "can't tell whether restacking \(.branch) would conflict: \($why)"}
+    elif .sync.conflict
+      then {hard: "restacking \(.branch) onto \($onto) would conflict; resolve it by hand: git rebase --onto \($onto) \(.sync.old_base[0:12])"}
+    else empty end,
+    if .session.locked then {soft: "taken over (branch.\(.branch).pr-lock is set)"} else empty end ]
+EOF
+
+restack() {
+  local b=$branch wt remote state gate line target new_base old_base old_head new_head before
+  wt=$(worktree_for "$b")
+  [[ -n $wt ]] || die "$b isn't checked out in any worktree"
+  [[ -z $(git -C "$wt" status --porcelain) ]] || die "$wt has uncommitted changes"
+  remote=$(prc_get settings.remote "$b" false) || die "pr-config failed"
+  git -C "$wt" fetch --quiet --prune "$remote" || die "fetch from $remote failed"
+  state=$(cd "$wt" && pr-state --json "$b") || die "pr-state failed"
+
+  gate=$(jq -c --arg remote "$remote" "$RESTACK_GATE" <<<"$state")
+  line=$(jq -r '.[] | .hard // empty' <<<"$gate" | head -1)
+  [[ -z $line ]] || die "$line"
+  line=$(jq -r '.[] | .done // empty' <<<"$gate")
+  if [[ -n $line ]]; then echo "$line"; return; fi
+  soft_gate "$gate" "restacking $b"
+
+  target=$(jq -r .sync.target <<<"$state")
+  old_base=$(jq -r .sync.old_base <<<"$state")
+  new_base=$(git rev-parse "refs/remotes/$remote/$target^{commit}")
+  old_head=$(git rev-parse "refs/heads/$b")
+  before=$(patch_id "$old_base" "$old_head")
+  if ! git -C "$wt" rebase --quiet --onto "$new_base" "$old_base" "$b" >/dev/null 2>&1; then
+    git -C "$wt" rebase --abort 2>/dev/null || true
+    [[ $(git rev-parse "refs/heads/$b") == "$old_head" ]] || git -C "$wt" reset --quiet --hard "$old_head"
+    die "the rebase onto $remote/$target stopped on a conflict partway through; rolled back to ${old_head:0:7}." \
+        "Resolve it by hand: git rebase --onto $remote/$target ${old_base:0:12}"
+  fi
+  new_head=$(git rev-parse "refs/heads/$b")
+  if [[ $(patch_id "$new_base" "$new_head") != "$before" ]]; then
+    git -C "$wt" reset --quiet --hard "$old_head"
+    die "$b's change came out different on $remote/$target (part of it may be there already); rolled back to ${old_head:0:7}." \
+        "Compare: git range-diff ${old_base:0:12}..${old_head:0:12} ${new_base:0:12}..${new_head:0:12}"
+  fi
+  git update-ref -m "pr-act restack" "refs/pr-tend/$b/base" "$new_base"
+  echo "restacked $b onto $remote/$target ($(plural "$(git rev-list --count "$new_base..$new_head")" commit)); not pushed: pr-act push"
 }
 
 # ── ack ──────────────────────────────────────────────────────────────────────
@@ -355,5 +492,7 @@ case $verb in
     ;;
   address) address ;;
   ack) ack ;;
+  restack) restack ;;
+  push) push ;;
   *) die "unknown verb: $verb" ;;
 esac

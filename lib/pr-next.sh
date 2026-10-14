@@ -48,7 +48,8 @@ values {...s, remote}
     open and on(sync.up_to_date == false) and on(sync.conflict)
       ? step("conflict", "agent", f"restack onto {sync.target} conflicts: resolve it", restack) : null,
     open and on(sync.up_to_date == false) and not on(sync.conflict) and chase
-      ? step("behind", "run", f"restack onto {sync.target} ({sync.behind} behind)", restack) : null,
+      ? step("behind", "run", f"restack onto {sync.target} ({sync.behind} behind)",
+             sync.old_base is null ? restack : "pr-act restack") : null,
     has_pr and on(ci.verdict == "red")
       ? step("ci-red", "agent", f"fix CI: {join(ci.failing, ", ")}", "gh pr checks") : null,
     open and bot_blocking > 0
@@ -56,9 +57,9 @@ values {...s, remote}
     open and bot_blocking == 0 and n(threads.info) > 0
       ? step("read", "you", f"read {plural(threads.info, "bot item")} in pr-state --long, then ack", "pr-act ack") : null,
     open and not foreign and to_push
-      ? (push.remote_sha is null ? step("push", "run", f"push: not on {remote} yet", f"git push -u {remote} {branch}")
-         : on(push.diverged) ? step("push", "run", f"force-push {plural(push.ahead, "commit")} (rewritten)", "git push --force-with-lease")
-         : step("push", "run", f"push {plural(push.ahead, "commit")}", "git push")) : null,
+      ? step("push", "run", push.remote_sha is null ? f"push: not on {remote} yet"
+             : on(push.diverged) ? f"force-push {plural(push.ahead, "commit")} (rewritten)"
+             : f"push {plural(push.ahead, "commit")}", "pr-act push") : null,
     pr is null and len(errors) == 0 ? step("open-pr", "you", "open a PR", "gh pr create") : null,
     has_pr and on(pr.draft) ? step("draft", "you", "mark the PR ready for review", "gh pr ready") : null,
     open and need_review ? step("review", "agent", "review the changes since the last review", null) : null,

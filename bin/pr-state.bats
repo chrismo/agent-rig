@@ -880,7 +880,7 @@ review() {
   commit b.txt b
   state
   [ "$(field '[.next[].key] | join(" ")')" = "bot push" ]  # no ci-wait: CI can't run before the push
-  [ "$(field '.next[1].cmd')" = "git push" ]
+  [ "$(field '.next[1].cmd')" = "pr-act push" ]
 }
 
 @test "next: a pushed branch with an open PR and nothing owed is ready to merge" {
@@ -896,7 +896,7 @@ review() {
   git switch -qc feat && commit a.txt a
   "$PR_CONFIG" set --global settings.remote up >/dev/null
   state
-  [ "$(field '[.next[] | select(.key == "push") | .cmd][0]')" = "git push -u up feat" ]
+  [ "$(field '[.next[] | select(.key == "push") | .say][0]')" = "push: not on up yet" ]
 }
 
 @test "summary: no PR" {

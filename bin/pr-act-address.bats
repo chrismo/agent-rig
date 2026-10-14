@@ -276,6 +276,25 @@ remote_feat() { git -C "$TMP/origin.git" rev-parse feat; }
   gh_call resolveReviewThread | grep -q '"thread=T1"'
 }
 
+@test "a rewritten branch of our own is pushed with a lease, like pr-act push" {
+  git commit -q --amend -m "feat, reworded"
+  run "$PR_ACT" address
+  [ "$status" -eq 0 ]
+  [ "$(remote_feat)" = "$(git rev-parse HEAD)" ]
+  [ "$(gh_ops)" = "nodes addPullRequestReviewThreadReply resolveReviewThread" ]
+}
+
+@test "a push refused for someone else's commits posts nothing, even with --force" {
+  (cd "$TMP" && git clone -q origin.git other 2>/dev/null && cd other && git switch -q feat \
+     && echo x > x.txt && git add x.txt && git commit -qm theirs && git push -q origin feat 2>/dev/null)
+  theirs=$(remote_feat)
+  run "$PR_ACT" address --force
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"isn't yours"* ]]
+  [ "$(remote_feat)" = "$theirs" ]
+  [ "$(gh_ops)" = nodes ]
+}
+
 @test "the agent sees the findings' text, not just their ids" {
   run "$PR_ACT" address
   [ "$status" -eq 0 ]

@@ -419,7 +419,7 @@ still full copies; `pr-config init --force` replaces one with empty blocks.
 | A0 | start | worktree, lineage, base pin, enroll, mint session |
 | A1 | fetch | |
 | A2 | restack | algorithm below; stops on conflict |
-| A3 | push | plain if fast-forward; else `--force-with-lease=<branch>:<sha>` with the SHA from O4 |
+| A3 | push | plain if fast-forward; else `--force-with-lease=<branch>:<sha>` with the SHA from O4, only when that SHA is ours. Never over others' commits, `--force` or not (chrismo, 2026-10-13) |
 | A4 | retarget / fix base | `gh pr edit --base` to match `pr-parent` (or `main` once the parent merged) |
 | A5 | trigger bot | post `pr-tend.botCommand`; pin `bot`; skip if already pinned at HEAD |
 | A6 | rerun flaky CI | optional; needs an allowlist |
@@ -699,8 +699,7 @@ from running them.
 4. **Bootstrap spike.** Enroll an existing branch with no `pr-act start` and
    check that `pr-state` derives the missing records (A2 fallback chain). Every
    later step assumes it works; if it doesn't, fix it first.
-5. `pr-act restack` + `push` incl. reconciliation (squash fixtures are the core
-   risk). Underway.
+5. `pr-act restack` + `push` incl. reconciliation — done 2026-10-13, see below
 6. **Retarget**, pulled out of the old step 6: after a parent merges, restack
    onto `main` and change the PR's base. It is stack maintenance, so it sits
    next to restack.
@@ -775,6 +774,61 @@ fetched by `pr-state`).
 Residual: the agent's reply *text* is posted as written, so a reply could
 itself carry a `/command` or `@mention`. Not handled; a deterministic scrub
 before posting is the fix if it ever happens.
+
+## `pr-act restack` and `pr-act push` — built 2026-10-13
+
+Separate verbs: restack never pushes, because every push restarts CI and makes
+bot reviews stale ("Ordering"), so one push should follow all the local work.
+By hand: `pr-act restack && pr-act push`. NEXT's `behind` and `push` steps
+name them.
+
+`pr-act restack [--force] [<branch>]` (A2):
+
+1. Find the branch's worktree (refuse if none or dirty), fetch with `--prune`,
+   run `pr-state --json`.
+2. Gate, from pr-state. Hard: the parent's merged state unknown (GitHub
+   unreadable, parent not the default branch), no old base or target ref
+   (pr-state's errors are quoted), conflict unknown, a predicted conflict (the
+   message gives the `git rebase --onto` to run by hand: J1 isn't built).
+   Soft (`--force`): taken over. Already on the target → exit 0.
+3. `git rebase --onto <remote>/<target> <old-base>` in that worktree. A
+   conflict partway through (possible when the whole-branch merge is clean,
+   e.g. a commit that is later reverted) → `rebase --abort`, back to the old
+   HEAD.
+4. Post-condition: `git diff -U0 | git patch-id --stable` of old-base..old-HEAD
+   must equal new-base..new-HEAD. Not equal (e.g. the target already has part
+   of the change, so the rebase dropped a commit) → reset to the old HEAD and
+   print the `git range-diff` to look at.
+5. Move `refs/pr-tend/<b>/base` to the new base.
+
+Tested against real git and the real pr-state (gh stubbed): a moved default
+branch, a stacked parent that moved, a squash-merged parent (old base from the
+merged PR's `headRefOid`), and each refusal and rollback above.
+
+`pr-act push [--force] [<branch>]` (A3), git only, no GitHub:
+
+- Fetch `--prune`, then compare with `<remote>/<b>`. Not there → `push -u`.
+  Ahead only → plain push. Remote only ahead (a GitHub "Commit suggestion",
+  a fixer bot) → refused with `git merge --ff-only <remote>/<b>` to take them
+  ([req-review #9](req-review.md#9-someone-elses-fast-forward-is-treated-as-a-foreign-push)).
+- Diverged and the remote head is in the branch's reflog → `--force-with-lease`
+  on that head. A push that moved the remote in between is rejected ("moved
+  while pushing"; tested with a `pre-push` hook that pushes first).
+- Diverged and the remote has commits that were never ours → refused, even
+  with `--force`. chrismo: "this should only ever be force with lease". The
+  count excludes our own pre-amend commits (`rev-list --stdin` with the reflog
+  negated).
+- `--force` only gets past a takeover lock.
+
+`pr-act address` publishes through the same code, so its push follows the same
+rules: before, a plain `git push` failed on any rewritten branch.
+
+Not built yet: J1 (conflict resolution by an agent); per-pin bases
+([req-review #2](req-review.md#2-restacking-breaks-o6s-rewritten-by-rebase-check));
+the native `gh stack` guard (pr-state doesn't report a stack yet); rewriting
+`pr-parent` after the parent merges (req-review #8); retarget (step 6).
+Known: pr-state's `foreign` step counts `push.behind`, which includes our own
+pre-amend commits, so it can say "2 commits that aren't yours" where push says 1.
 
 ## Process supervision — plan for the loop (not built)
 
