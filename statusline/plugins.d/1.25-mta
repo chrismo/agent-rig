@@ -1,6 +1,0 @@
-#!/bin/bash
-# Segment: active MTA shared context
-# Shows the ticket name if this session has joined an MTA context,
-# or "mta: -" if not. Outputs nothing if mta-engine is not installed.
-ticket=$(mta-engine my-context 2>/dev/null) || exit 0
-echo "mta: ${ticket:--}"

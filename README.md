@@ -69,12 +69,9 @@ Both lines are plugin-driven — assembled from executable scripts in `statuslin
 |--------|---------|
 | `1.10-project` | project name |
 | `1.20-git` | git branch + status |
-| `1.25-mta` | active MTA ticket (multi-Claude coordination) |
 | `1.30-dir` | relative directory |
 | `1.40-version` | Claude Code version |
-| `1.50-model` | model + effort-level bars (the pick) |
-| `1.55-served` | which model actually served the last turn + cache state (the pick's consequence — these diverge behind a gateway) |
-| `1.60-sandbox` | sandbox status |
+| `1.50-model` | model + effort-level bars |
 | `2.10-hud` | [`hud`](https://github.com/chrismo/hud) status bar (optional, skipped if hud not installed) |
 | `2.50-cost` | session cost + wall/API duration |
 | `2.60-lines` | lines added/removed |
