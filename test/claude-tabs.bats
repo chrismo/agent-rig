@@ -644,11 +644,11 @@ MANIFEST
 
   export CLAUDE_SLOT_CMD_DIR="$TEST_DIR/slot-cmd"
   mkdir -p "$TEST_DIR/worktree"
-  run "$CLAUDE_SLOT" "$TEST_DIR/worktree" /mta:join PROJ-123
+  run "$CLAUDE_SLOT" "$TEST_DIR/worktree" /dialogue outline
   [[ "$status" -eq 0 ]] || false
 
   cmd=$(cat "$CLAUDE_SLOT_CMD_DIR/cmd.txt")
-  [[ "$cmd" == *'claude "/mta:join PROJ-123"'* ]]
+  [[ "$cmd" == *'claude "/dialogue outline"'* ]]
 }
 
 @test "claude-slot without --resume and no prompt starts plain claude" {

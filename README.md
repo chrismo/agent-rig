@@ -82,9 +82,8 @@ Both lines are plugin-driven — assembled from executable scripts in `statuslin
 `2.77-spend` renders nothing itself. The segment
 (`38% $229/$611 | 24h [···●·◇··] 8h`) is built by
 `scripts/claude-daily-spend-statusline.sh` in the claude-plugins marketplace
-repo, and the plugin shells out to it. That script has to be maintained past
-the switch to the litellm stack, and the way to notice it breaking is to run
-it rather than keep a parallel copy here that drifts — so this statusline
+repo, and the plugin shells out to it. The way to notice that script breaking
+is to run it rather than keep a parallel copy here that drifts — so this statusline
 renders from the artifact an outside user gets. Point the plugin somewhere
 else with `AGENT_RIG_SPEND_STATUSLINE`, or edit the one path at the top of
 it. Missing checkout means a missing segment, silently.

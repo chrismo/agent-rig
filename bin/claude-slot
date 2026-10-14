@@ -4,7 +4,7 @@
 #
 # Usage: claude-slot <worktree> [--resume <session-id>] [prompt]
 #        claude-slot ds5
-#        claude-slot ds5 /mta:join PROJ-123
+#        claude-slot ds5 /dialogue outline
 #        claude-slot ds5 --resume abc-123-def
 #        claude-slot ds8 /yah
 #
@@ -17,7 +17,7 @@ usage() {
     echo "Usage: claude-slot <worktree> [--resume <session-id>] [prompt]"
     echo "Examples:"
     echo "  claude-slot ds5"
-    echo "  claude-slot ds5 /mta:join PROJ-123"
+    echo "  claude-slot ds5 /dialogue outline"
     echo "  claude-slot ds5 --resume abc-123-def"
     echo "  claude-slot ds8 /yah"
 }

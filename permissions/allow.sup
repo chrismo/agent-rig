@@ -29,7 +29,6 @@
 "mcp__superdb__super_test_compat"
 "mcp__superdb__super_validate"
 "Skill(commit-commands:commit)"
-"Skill(mta:*)"
 "WebFetch(domain:api.anthropic.com)"
 "WebFetch(domain:bchq.net)"
 "WebFetch(domain:healthchecks.io)"

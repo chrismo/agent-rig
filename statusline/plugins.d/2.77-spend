@@ -8,9 +8,8 @@
 # and prints what comes back. Nothing about the bar, the colours or the
 # countdown is decided here — read the upstream script for any of that.
 #
-# The arrangement is deliberate. That script has to be maintained past the
-# switch to the litellm stack, and the way to notice it breaking is to run it,
-# not to keep a parallel copy here that drifts. So this machine's status line
+# The arrangement is deliberate. The way to notice that script breaking is to
+# run it, not to keep a parallel copy here that drifts. So this machine's status line
 # renders from the artifact an outside user gets: a regression upstream shows
 # up in this prompt before anyone reports it.
 #
@@ -34,7 +33,6 @@
 # Silent on any failure. A status line that breaks the prompt is worse than a
 # status line missing a segment.
 
-# Edit this when the script moves to the litellm stack.
 UPSTREAM="${AGENT_RIG_SPEND_STATUSLINE:-$HOME/dev/claude-plugins/scripts/claude-daily-spend-statusline.sh}"
 
 [[ -f "$UPSTREAM" && -x "$UPSTREAM" ]] || exit 0
