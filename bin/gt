@@ -2,21 +2,9 @@
 #
 # gt - Fuzzy-select a Ghostty tab or window and jump to it.
 #
-# The sibling of `wt` (worktree selector), but for Ghostty surfaces instead of
-# git worktrees. Ghostty has no tab-switching API, but as a native macOS app it
-# lists every tab AND window as a clickable item at the bottom of the Window
-# menu, labeled with the titles set-title.sh produces (emoji + "dir (branch)").
-# We enumerate those items via System Events, fuzzy-select with fzf, then click
-# the chosen item to focus it.
-#
-# Selection is by menu-item INDEX, not title: titles are not unique (two
-# "dscout (main)" tabs are common), so matching by name would always click the
-# first. fzf shows the title; the index rides along in a hidden first field.
-#
 # Usage: gt
-#
-# Requires: fzf, macOS System Events. Accessibility permission is needed for
-# System Events to read/click menus — grant it to whatever runs gt (your terminal) if prompted.
+# Requires: fzf and Ghostty/Moestty's native AppleScript API.
+# Selection uses stable tab IDs, not titles or Window-menu positions.
 
 set -euo pipefail
 
@@ -47,7 +35,7 @@ gt_title_leaf() {
   printf '%s\n' "$title"
 }
 
-# Passthrough filter over the AppleScript dump: keep "index<TAB>title" lines,
+# Passthrough filter over the AppleScript dump: keep "id<TAB>title" lines,
 # drop blanks. Kept as a seam so fzf input is defined in one place.
 # `|| true`: grep exits 1 when nothing matches (all-blank/empty input). That
 # empty case is expected and handled by the caller's `[[ -z "$dump" ]]` check,
@@ -79,41 +67,37 @@ gt_preview() {
   fi
 }
 
-# ── AppleScript integration (not unit-tested) ─────────────────────────────────
+# ── AppleScript integration ───────────────────────────────────────────────────
 
-# Dump the Window menu's trailing tab/window entries as "index<TAB>title".
-# The Window menu holds window-management commands first, then a separator,
-# then the list of open windows/tabs. We take everything after the LAST
-# separator (missing-value name), which is that list.
-gt_dump_menu() {
+gt_dump_tabs() {
   osascript <<'APPLESCRIPT'
-tell application "System Events" to tell (first process whose bundle identifier is "com.mitchellh.ghostty")
-  set menuItems to menu items of menu 1 of (menu bar item "Window" of menu bar 1)
-  set n to count of menuItems
-  set lastSep to 0
-  repeat with j from 1 to n
-    if (name of (item j of menuItems)) is missing value then set lastSep to j
-  end repeat
+tell application id "com.mitchellh.ghostty"
   set out to ""
-  repeat with j from (lastSep + 1) to n
-    set nm to name of (item j of menuItems)
-    if nm is not missing value then set out to out & j & tab & nm & linefeed
+  repeat with w in windows
+    repeat with t in tabs of w
+      set out to out & (id of t) & (ASCII character 9) & (name of t) & linefeed
+    end repeat
   end repeat
   return out
 end tell
 APPLESCRIPT
 }
 
-# Click the Window-menu item at the given 1-based index, focusing that surface.
-gt_click_index() {
-  local idx="$1"
-  osascript - "$idx" <<'APPLESCRIPT'
+gt_select_tab() {
+  osascript - "$1" <<'APPLESCRIPT'
 on run argv
-  set idx to (item 1 of argv) as integer
-  tell application id "com.mitchellh.ghostty" to activate
-  tell application "System Events" to tell (first process whose bundle identifier is "com.mitchellh.ghostty")
-    set menuItems to menu items of menu 1 of (menu bar item "Window" of menu bar 1)
-    click (item idx of menuItems)
+  set tabID to item 1 of argv
+  tell application id "com.mitchellh.ghostty"
+    repeat with w in windows
+      repeat with t in tabs of w
+        if (id of t) is tabID then
+          select tab t
+          activate
+          return
+        end if
+      end repeat
+    end repeat
+    error "gt: selected tab is no longer available"
   end tell
 end run
 APPLESCRIPT
@@ -127,17 +111,14 @@ gt_main() {
     return 1
   fi
 
-  # `|| true`: a bare `dump=$(...)` assignment whose pipeline exits non-zero
-  # would abort under set -e before the empty check below could run.
   local dump
-  dump="$(gt_dump_menu | gt_parse_menu)" || true
+  dump="$(gt_dump_tabs | gt_parse_menu)" || return $?
   if [[ -z "$dump" ]]; then
     echo "gt: no Ghostty tabs/windows found (is Ghostty running?)" >&2
     return 1
   fi
 
-  # fzf shows only the title (field 2+), previews via gt_preview, and returns
-  # the full "index<TAB>title" line so we can recover the index.
+  # fzf hides the stable ID in field 1.
   local selected rc
   selected="$(
     printf '%s\n' "$dump" | fzf \
@@ -154,12 +135,7 @@ gt_main() {
 
   [[ -z "$selected" ]] && return 0
 
-  # Click by the index captured at dump time. macOS reorders the Window menu
-  # when a window gains focus, which would stale the index — but focusing
-  # another Ghostty surface requires leaving the tab where fzf is running,
-  # which dismisses fzf first. So between dump and click the order is stable.
-  local idx="${selected%%$'\t'*}"
-  gt_click_index "$idx"
+  gt_select_tab "${selected%%$'\t'*}"
 }
 
 # Sourced (by bats) → expose functions only. Executed → run main, or serve a

@@ -4,10 +4,7 @@ bats_require_minimum_version 1.5.0
 
 # Test suite for bin/gt (Ghostty tab/window fuzzy selector).
 #
-# Most of gt is integration-level (System Events + Ghostty's Window menu),
-# but the title-parsing and preview-resolution helpers are pure text
-# functions — we lock in their shape so future edits don't regress how
-# titles map back to worktree paths.
+# Pure helpers plus the native AppleScript boundary (stubbed osascript).
 
 GT="$BATS_TEST_DIRNAME/gt"
 
@@ -52,17 +49,14 @@ setup() {
 }
 
 # ── gt_parse_menu ─────────────────────────────────────────────────────────────
-# The AppleScript dump is "<index><TAB><title>" lines. gt_parse_menu is the
-# identity/passthrough filter that drops blank lines so fzf gets clean input.
-# (Selection is by index, carried in the first field, to survive duplicate
-# titles like two "dscout (main)" entries.)
+# Rows carry a stable tab ID, so duplicate titles remain independently selectable.
 
-@test "gt_parse_menu drops blank lines, keeps index<TAB>title" {
-  input=$'36\t⚪ aws (branch-a)\n\n37\tdscout (main)\n'
+@test "gt_parse_menu drops blank lines, keeps id<TAB>title" {
+  input=$'tab-36\t⚪ aws (branch-a)\n\ntab-37\tdscout (main)\n'
   run gt_parse_menu <<<"$input"
   [ "$status" -eq 0 ]
-  [[ "$(echo "$output" | sed -n 1p)" == $'36\t⚪ aws (branch-a)' ]] || false
-  [[ "$(echo "$output" | sed -n 2p)" == $'37\tdscout (main)' ]] || false
+  [[ "$(echo "$output" | sed -n 1p)" == $'tab-36\t⚪ aws (branch-a)' ]] || false
+  [[ "$(echo "$output" | sed -n 2p)" == $'tab-37\tdscout (main)' ]] || false
   [ "$(echo "$output" | grep -c .)" -eq 2 ]
 }
 
@@ -78,6 +72,56 @@ setup() {
   run gt_parse_menu </dev/null
   [ "$status" -eq 0 ]
   [[ -z "$output" ]]
+}
+
+@test "gt_dump_tabs uses native tabs without Accessibility or window-name prefixes" {
+  osascript() {
+    local script
+    script="$(</dev/stdin)"
+    [[ "$script" == *'tell application id "com.mitchellh.ghostty"'* ]] || return 1
+    [[ "$script" == *'tabs of w'* ]] || return 1
+    [[ "$script" == *'id of t'* ]] || return 1
+    [[ "$script" == *'name of t'* ]] || return 1
+    [[ "$script" != *'System Events'* ]] || return 1
+    [[ "$script" != *'name of w'* ]] || return 1
+    [[ "$script" == *'ASCII character 9'* ]] || return 1
+    printf 'tab-123\t🔵 agent-rig (main)\n'
+  }
+  run gt_dump_tabs
+  [ "$status" -eq 0 ]
+  [ "$output" = $'tab-123\t🔵 agent-rig (main)' ]
+}
+
+@test "gt_select_tab locates a stable ID across windows and selects it" {
+  osascript() {
+    [ "$1" = - ] || return 1
+    [ "$2" = tab-123 ] || return 1
+    local script
+    script="$(</dev/stdin)"
+    [[ "$script" == *'id of t'* ]] || return 1
+    [[ "$script" == *'select tab t'* ]] || return 1
+    [[ "$script" == *'activate'* ]] || return 1
+    [[ "$script" != *'System Events'* ]] || return 1
+  }
+  run gt_select_tab tab-123
+  [ "$status" -eq 0 ]
+}
+
+@test "gt_main sends the selected stable ID, not its duplicate title" {
+  gt_dump_tabs() { printf 'tab-123\tdscout (main)\ntab-456\tdscout (main)\n'; }
+  fzf() { tail -1; }
+  gt_select_tab() { printf 'selected:%s\n' "$1"; }
+  run gt_main
+  [ "$status" -eq 0 ]
+  [ "$output" = selected:tab-456 ]
+}
+
+@test "gt_main preserves AppleScript errors instead of reporting no tabs" {
+  fzf() { return 0; }
+  gt_dump_tabs() { echo 'Not authorized to send Apple events' >&2; return 7; }
+  run gt_main
+  [ "$status" -eq 7 ]
+  [ "$output" = 'Not authorized to send Apple events' ]
 }
 
 # ── gt_preview ────────────────────────────────────────────────────────────────
