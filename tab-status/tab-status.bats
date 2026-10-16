@@ -158,7 +158,7 @@ make_transcript() {
   [[ "$output" == *"🟣 pr"* ]]
 }
 
-@test "pr-watch glyph is appended for the branch it was computed for" {
+@test "sd watch glyph is appended for the branch it was computed for" {
   init_repo feat
   printf 'feat\t✅\n' > "$STATUS_DIR/repo.pr"
   run compute_title </dev/null
@@ -167,7 +167,7 @@ make_transcript() {
   [ "$output" = "repo (feat) ✅" ]
 }
 
-@test "pr-watch glyph for a different branch is not shown" {
+@test "sd watch glyph for a different branch is not shown" {
   init_repo feat
   printf 'other\t❌\n' > "$STATUS_DIR/repo.pr"
   run compute_title </dev/null
@@ -176,7 +176,7 @@ make_transcript() {
   [ "$output" = "repo (feat)" ]
 }
 
-@test "pr-watch glyph sits after the label, status emoji stays in front" {
+@test "sd watch glyph sits after the label, status emoji stays in front" {
   init_repo feat
   echo active > "$STATUS_DIR/repo"
   printf 'feat\t⏳\n' > "$STATUS_DIR/repo.pr"

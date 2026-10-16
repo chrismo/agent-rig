@@ -749,7 +749,7 @@ OLD_CHECKOUT() { echo "$TEST_DIR/old/claude-rig"; }
   [[ "$target" == "$BATS_TEST_DIRNAME/bin/claude-src" ]]
 }
 
-# pr-tend moved to its own repo (2026-10-13); its ./install.sh links these now.
+# pr-tend (now sheepdog) moved to its own repo (2026-10-13); these links went with it.
 @test "bin: pr-* links from an earlier install are removed" {
   mkdir -p "$LOCAL_BIN"
   local cmd

@@ -92,7 +92,7 @@ compute_title() {
       agent_name=$(get_agent_name)
       [[ -n "$agent_name" ]] && label="$agent_name"
     fi
-    # glyph written by pr-watch
+    # glyph written by sd watch
     local suffix="" pr_branch pr_glyph
     if [[ -f "$status_file.pr" ]] && IFS=$'\t' read -r pr_branch pr_glyph < "$status_file.pr" \
        && [[ "$pr_branch" == "$branch" && -n "$pr_glyph" ]]; then
