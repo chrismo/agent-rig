@@ -21,7 +21,7 @@ bats hooks/use-dedicated-tools.bats
 **Important:** The hook writes logs to `~/.claude/logs/`, which is outside the sandbox write-allow list. Bats tests must run with sandbox disabled (`dangerouslyDisableSandbox: true`) or they will all fail because the hook crashes on the blocked log writes.
 
 **The PR pipeline, sheepdog (`sd state`, `sd act`, `sd watch`, `sd config`),
-lives in its own repo**, `~/modev/pr-tend` (moved out 2026-10-13; named pr-tend
+lives in its own repo**, `~/modev/sheepdog` (moved out 2026-10-13; named pr-tend
 until 2026-10-15), with its own `install.sh`. `tab-status` still reads the
 `<worktree>.pr` glyph file that `sd watch` writes.
 
