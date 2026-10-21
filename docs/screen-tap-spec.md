@@ -83,7 +83,7 @@ Skill at `skills/watch-screen/` that:
 - Applies the ANSI strip transparently.
 - Surfaces a clean, line-oriented view to the Claude reading it.
 
-Pairs naturally with `agent-read` (see `bin/agent-read` and the `pod-peer` skill) — same pull-on-demand read model, different substrate (PTY log vs. Claude transcript JSONL).
+Pairs naturally with `agent-read` (see `bin/agent-read` and the `consult` skill) — same pull-on-demand read model, different substrate (PTY log vs. Claude transcript JSONL).
 
 ### 3. Integration ideas
 
@@ -117,5 +117,5 @@ Anything long-running that Claude can run itself, Claude runs directly, so an un
 
 ## Related
 
-- `bin/agent-read` (+ `skills/pod-peer/`) — sibling tool for Claude↔Claude observation via JSONL transcripts. Originally spec'd in `docs/follow-claude-spec.md`; spec was deleted once realized.
+- `bin/agent-read` (+ `skills/consult/`) — sibling tool for Claude↔Claude observation via JSONL transcripts. Originally spec'd in `docs/follow-claude-spec.md`; spec was deleted once realized.
 - `script(1)` man page — note the BSD/util-linux flag divergence.

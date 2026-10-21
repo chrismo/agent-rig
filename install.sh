@@ -383,7 +383,7 @@ fi
 # (docs/skills.md in the pi package), so one source can feed both harnesses.
 #
 # An allowlist, not a glob, and a short one. Most skills here instruct tools that
-# exist only in Claude Code — goal-compose drives /goal, pod-peer needs
+# exist only in Claude Code — goal-compose drives /goal, consult needs
 # SendMessage, the lemma-* skills call lemmalog_* MCP tools by name — and a skill
 # that tells pi to use a tool pi does not have is worse than an absent skill.
 # When a skill stops depending on Claude-only tools, add it here.

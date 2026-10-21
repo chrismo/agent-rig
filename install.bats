@@ -500,7 +500,7 @@ EOF
 # pi discovers any directory containing a SKILL.md under its agent dir's skills/
 # (docs/skills.md), so the skills in this repo can serve both harnesses from one
 # source. Allowlisted, not globbed: most skills here instruct Claude-only tools
-# (goal-compose's /goal, pod-peer's SendMessage, the lemma-* skills' lemmalog_*
+# (goal-compose's /goal, consult's SendMessage, the lemma-* skills' lemmalog_*
 # MCP tools) and would be dead weight or actively misleading inside pi.
 
 @test "pi: skills are not installed when pi is not set up on this machine" {
@@ -526,7 +526,7 @@ EOF
   run_installer
   [ "$status" -eq 0 ]
   [ ! -e "$PI_CODING_AGENT_DIR/skills/goal-compose" ]
-  [ ! -e "$PI_CODING_AGENT_DIR/skills/pod-peer" ]
+  [ ! -e "$PI_CODING_AGENT_DIR/skills/consult" ]
   [ ! -e "$PI_CODING_AGENT_DIR/skills/lemma-drain" ]
 }
 

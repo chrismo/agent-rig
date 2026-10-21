@@ -37,12 +37,12 @@ asserting on one would fail for a rename that broke nothing.
 
 | ID | Assumption | Relied on by | If it fails |
 |---|---|---|---|
-| A1 | The `uds-messaging` subsystem exists | `pod-peer` skill, [protocol doc](inter-claude-protocol.md) | Peer messaging was restructured. Re-read the module before trusting anything in the protocol doc. |
+| A1 | The `uds-messaging` subsystem exists | `consult` skill, [protocol doc](inter-claude-protocol.md) | Peer messaging was restructured. Re-read the module before trusting anything in the protocol doc. |
 | A2 | Sessions advertise a socket via `messagingSocketPath` | `claude-tabs`, reachability marking | Reachability can no longer be read from the registry. Find the new field. |
 | A3 | A session learns its own address from `CLAUDE_CODE_MESSAGING_SOCKET` | self-identification | Self-exclusion from rosters may break; find the new source. |
 | A4 | Wire format is newline-delimited JSON (the logged `Inject messages` recipe) | any hand-written socket write | Direct socket injection is unsafe. Stop writing to sockets until re-derived. |
 | A5 | Refs are `sha256(...)` cut to 12 (`digest("hex").slice(0,12)`) | offline ref computation | Every computed ref is wrong. Re-derive before using refs anywhere. |
-| A6 | The `sendMessagePins` mechanism still exists | `pod-peer` guidance on addressing | Pins are gone; name resolution works some other way entirely. Re-check the skill's addressing section. |
+| A6 | The `sendMessagePins` mechanism still exists | `consult` guidance on addressing | Pins are gone; name resolution works some other way entirely. Re-check the skill's addressing section. |
 | A7 | Sockets live under `cc-socks` | protocol doc, any socket path building | Socket discovery paths are wrong. |
 
 ### B — the session registry
@@ -143,7 +143,7 @@ call `SendMessage`:
 - **The addressing rule.** Send to a peer by bare name with no prior pin: a name
   matching exactly one live row should land. Send to a prefix matching two or
   more rows: it should be rejected with an error naming their refs. Send with
-  the ref: it should land. A change here means the `pod-peer` skill's addressing
+  the ref: it should land. A change here means the `consult` skill's addressing
   guidance is wrong.
 
   Prefer the ambiguous-prefix probe for the rejection half — it is refused

@@ -181,7 +181,7 @@ Four more things cross over into pi, all from `install.sh`:
 **Skills.** pi discovers any directory with a `SKILL.md` under `~/.pi/agent/skills/`,
 so the harness-agnostic skills here are symlinked there too — `autopilot`,
 `dialogue`, `kaomoji`, `work-context`. It's an allowlist, not a glob: most skills
-in this repo instruct Claude-only tools (`goal-compose` drives `/goal`, `pod-peer`
+in this repo instruct Claude-only tools (`goal-compose` drives `/goal`, `consult`
 needs `SendMessage`, the `lemma-*` skills call `lemmalog_*` MCP tools by name), and
 a skill telling pi to use a tool pi doesn't have is worse than no skill at all.
 

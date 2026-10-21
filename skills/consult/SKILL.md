@@ -1,10 +1,10 @@
 ---
-name: pod-peer
-description: You may have peer Claude, Codex, or pi sessions cooperating with you, and a human whose terminal is recorded — read what they're doing with agent-read, or ask them directly with SendMessage
+name: consult
+description: Consult another Claude, Codex, or pi session, in this worktree or another — read what it did, or ask it directly with SendMessage — and read the human's recorded terminal when there is one
 allowed-tools: Bash, ListAgents, SendMessage
 ---
 
-# pod-peer — you have peers
+# consult — you have peers
 
 You may have other Claude sessions cooperating with you, often in the same
 worktree but not always. They are working on related (or the same) problems.
