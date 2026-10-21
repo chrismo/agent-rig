@@ -88,9 +88,6 @@ renders from the artifact an outside user gets. Point the plugin somewhere
 else with `AGENT_RIG_SPEND_STATUSLINE`, or edit the one path at the top of
 it. Missing checkout means a missing segment, silently.
 
-`bin/claude-spend` is no longer in that path. It stays as a CLI for a one-off
-reading; the statusline does not use it.
-
 Drop any executable into `plugins.d/` to add a segment. The script receives `CLAUDE_STATUS_INPUT` env var pointing to the session JSON. Output a string on stdout; empty output = segment skipped.
 
 Override the plugin directory with `STATUSLINE_PLUGIN_DIR` env var.

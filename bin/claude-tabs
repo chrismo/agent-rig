@@ -350,7 +350,7 @@ cmd_restore() {
   local i=0
   while IFS=, read -r path session_id; do
     if [[ -n "${CLAUDE_TABS_DRY_RUN:-}" ]]; then
-      echo "claude-slot $path --resume $session_id"
+      echo "cd $path && claude --resume $session_id"
     else
       local wt_name
       wt_name=$(basename "$path")

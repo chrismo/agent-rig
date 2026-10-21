@@ -25,9 +25,7 @@
 # the marketplace one. If it stops running, this segment keeps rendering and
 # starts lying: the percent becomes percent-of-month.
 #
-# bin/claude-spend is no longer in this path. It stays as a CLI on PATH —
-# `claude-spend` for a one-off reading — but the status line does not use it,
-# and upstream does its own fetching and caching (jq, not SuperDB, so the
+# Upstream does its own fetching and caching (jq, not SuperDB, so the
 # script has no dependency beyond what an outside user already has).
 #
 # Silent on any failure. A status line that breaks the prompt is worse than a

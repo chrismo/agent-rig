@@ -51,9 +51,9 @@ asserting on one would fail for a rename that broke nothing.
 
 | ID | Assumption | Relied on by | If it fails |
 |---|---|---|---|
-| B1 | The registry directory exists | `claude-tabs`, `claude-pod` | Session discovery is gone; `claude-tabs` falls back to nothing. Check whether it moved before rewriting anything. |
+| B1 | The registry directory exists | `claude-tabs`, `agent-read` | Session discovery is gone; `claude-tabs` falls back to nothing. Check whether it moved before rewriting anything. |
 | B2 | Files are named `<pid>.json` | `claude-tabs read_registry` | The filename is how the PID is known. A rename breaks liveness checks. |
-| B3 | Records carry `pid`, `sessionId`, `cwd`, `kind`, `status`, `startedAt` | `claude-tabs`, `claude-pod` name map | Whichever field vanished — `sessionId` is the worst, it's the transcript join. |
+| B3 | Records carry `pid`, `sessionId`, `cwd`, `kind`, `status`, `startedAt` | `claude-tabs`, `agent-read` name map | Whichever field vanished — `sessionId` is the worst, it's the transcript join. |
 | B4 | `kind` ∈ `interactive\|bg\|daemon\|daemon-worker`, `status` ∈ `busy\|shell\|idle\|waiting` | status rendering | A new value renders as garbage rather than crashing. Add it. |
 
 ### R — runtime activation
@@ -80,7 +80,7 @@ R2 looks at the installed build rather than the running one because that is
 what the next session will launch: R1 can stay green on a long-lived session
 while every new one comes up dead.
 
-### E — addressability (what `claude-peer --ask` stands on)
+### E — addressability (what `claude-send --ask` stands on)
 
 `--ask` gets a reply by telling the peer to answer a `uds:` socket path. That is
 the load-bearing assumption. Registration is a *separate*, opt-in capability
@@ -89,7 +89,7 @@ works without it.
 
 | ID | Assumption | Relied on by | If it fails |
 |---|---|---|---|
-| E4 | A `uds:` socket path is a valid `SendMessage` target — the tool prompt says to copy a `from` attribute as your `to` | **`claude-peer --ask`** | `--ask` is dead: the peer has no way to answer a shell. Fall back to reading the peer's transcript for its reply. |
+| E4 | A `uds:` socket path is a valid `SendMessage` target — the tool prompt says to copy a `from` attribute as your `to` | **`claude-send --ask`** | `--ask` is dead: the peer has no way to answer a shell. Fall back to reading the peer's transcript for its reply. |
 | E3 | Attribution is a text wrapper inside `message.content`, not a verified field | `--ask` reply parsing | The envelope moved. `--ask` prints protocol furniture, or nothing, instead of the answer. |
 | E1 | The registry directory is writable by us | `--ask --register` only | `--register` must fail loudly rather than hang. Plain `--ask` is unaffected. |
 | E2 | A roster entry needs only a live pid + an answering socket — no proof of being a real Claude | `--ask --register` only | Registration is being validated (signature, cookie, process identity). Drop `--register`; plain `--ask` keeps working. |
@@ -104,7 +104,7 @@ losing it costs visibility, not function. Do not work around it.
 ### C — transcripts
 
 The widest blast radius in the repo: seven scripts read these
-(`claude-pod`, `agent-search` (formerly `claude-search`), `claude-tabs`,
+(`agent-read`, `agent-search`, `claude-tabs`,
 `work-context`, and the three `session-*.sh`). It is also the surface most
 likely to change quietly, because it is a data format rather than a
 mechanism.
@@ -113,7 +113,7 @@ mechanism.
 |---|---|---|---|
 | C1 | The projects dir encodes a worktree as `-Users-name-…` | every transcript reader | No script can find the right directory for a worktree. |
 | C2 | Transcript lines are JSON objects with `.type` | every transcript reader | Rendering and filtering break wholesale. |
-| C3 | `user`/`assistant` records nest content under `.message.content` | `claude-pod` rendering, usage scripts | Conversations render empty. |
+| C3 | `user`/`assistant` records nest content under `.message.content` | `agent-read` rendering, usage scripts | Conversations render empty. |
 
 ### D — the stamp
 
@@ -123,12 +123,12 @@ mechanism.
 
 ## What is automated, and the one thing that isn't
 
-`bin/claude-peer` reimplements discovery, ref derivation and sending in the
+`bin/claude-send` reimplements discovery, ref derivation and sending in the
 shell, so most of the behavioural half is now machine-checkable — `bats
-bin/claude-peer.bats` stands up real unix sockets and exercises the probe and
+bin/claude-send.bats` stands up real unix sockets and exercises the probe and
 the send for real:
 
-- **Roster contents** — `claude-peer --list` builds its own roster from the
+- **Roster contents** — `claude-send --list` builds its own roster from the
   registry plus a connect probe. Compare it against a Claude session's
   `ListAgents` output; the names and refs should match row for row.
 - **Ref derivation** — computed with `shasum -a 256` and asserted in the suite.
@@ -154,7 +154,7 @@ call `SendMessage`:
   A `success` tool result proves only that the socket accepted the bytes. If the
   delivery half is what you are checking, confirm from the receiving end.
 
-That distinction matters: `claude-peer` proves the *transport and registry*
+That distinction matters: `claude-send` proves the *transport and registry*
 still work. It cannot prove that Claude's own resolver, pins and message
 envelope are unchanged, because it deliberately bypasses all three.
 

@@ -2,9 +2,9 @@
 
 bats_require_minimum_version 1.5.0
 
-# Test suite for bin/claude-peer.
+# Test suite for bin/claude-send.
 #
-# claude-peer lists and messages live Claude sessions from a shell, without
+# claude-send lists and messages live Claude sessions from a shell, without
 # going through Claude's own ListAgents/SendMessage tools. It reimplements what
 # the binary does (see docs/inter-claude-protocol.md):
 #
@@ -15,7 +15,7 @@ bats_require_minimum_version 1.5.0
 # Tests build a fake registry in BATS_TEST_TMPDIR and stand up real unix
 # sockets, so the probe and the send are exercised for real rather than mocked.
 
-PEER="$BATS_TEST_DIRNAME/claude-peer"
+PEER="$BATS_TEST_DIRNAME/claude-send"
 
 setup() {
   export CLAUDE_SESSIONS_META_DIR="$BATS_TEST_TMPDIR/sessions"
@@ -395,7 +395,7 @@ reg_count() { ls "$CLAUDE_SESSIONS_META_DIR" 2>/dev/null | wc -l | tr -d ' '; }
   start_answering_peer "$sock" "migration landed, 8 tables verified"
   write_session $$ "builder" "$sock"
 
-  CLAUDE_PEER_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask builder "did it land?" --timeout 15
+  CLAUDE_SEND_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask builder "did it land?" --timeout 15
   [ "$status" -eq 0 ]
   [[ "$output" == *"migration landed, 8 tables verified"* ]] || false
   [[ "$output" != *"cross-session-message"* ]]
@@ -414,7 +414,7 @@ reg_count() { ls "$CLAUDE_SESSIONS_META_DIR" 2>/dev/null | wc -l | tr -d ' '; }
   local before during
   before=$(reg_count)
   ( sleep 1; reg_count > "$BATS_TEST_TMPDIR/during" ) &
-  CLAUDE_PEER_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask mute "hello" --timeout 4
+  CLAUDE_SEND_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask mute "hello" --timeout 4
   [ "$status" -eq 2 ]
 
   during=$(cat "$BATS_TEST_TMPDIR/during")
@@ -430,7 +430,7 @@ reg_count() { ls "$CLAUDE_SESSIONS_META_DIR" 2>/dev/null | wc -l | tr -d ' '; }
   before=$(reg_count)
   ( sleep 1; reg_count > "$BATS_TEST_TMPDIR/during"
     grep -l 'asker' "$CLAUDE_SESSIONS_META_DIR"/*.json > "$BATS_TEST_TMPDIR/named" 2>/dev/null ) &
-  CLAUDE_PEER_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask mute "hello" \
+  CLAUDE_SEND_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask mute "hello" \
     --register --name asker --timeout 4
   [ "$status" -eq 2 ]
 
@@ -446,7 +446,7 @@ reg_count() { ls "$CLAUDE_SESSIONS_META_DIR" 2>/dev/null | wc -l | tr -d ' '; }
 
   local before after
   before=$(reg_count)
-  CLAUDE_PEER_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask builder "hello" \
+  CLAUDE_SEND_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask builder "hello" \
     --register --timeout 15
   [ "$status" -eq 0 ]
   after=$(reg_count)
@@ -460,7 +460,7 @@ reg_count() { ls "$CLAUDE_SESSIONS_META_DIR" 2>/dev/null | wc -l | tr -d ' '; }
 
   local before after
   before=$(ls "$CLAUDE_SESSIONS_META_DIR" | wc -l | tr -d ' ')
-  CLAUDE_PEER_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask builder "hi" --timeout 15
+  CLAUDE_SEND_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask builder "hi" --timeout 15
   [ "$status" -eq 0 ]
   after=$(ls "$CLAUDE_SESSIONS_META_DIR" | wc -l | tr -d ' ')
   [ "$before" -eq "$after" ]
@@ -474,7 +474,7 @@ reg_count() { ls "$CLAUDE_SESSIONS_META_DIR" 2>/dev/null | wc -l | tr -d ' '; }
 
   local before after
   before=$(ls "$CLAUDE_SESSIONS_META_DIR" | wc -l | tr -d ' ')
-  CLAUDE_PEER_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask mute "anyone?" --timeout 2
+  CLAUDE_SEND_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask mute "anyone?" --timeout 2
   [ "$status" -eq 2 ]
   after=$(ls "$CLAUDE_SESSIONS_META_DIR" | wc -l | tr -d ' ')
   [ "$before" -eq "$after" ]
@@ -488,7 +488,7 @@ reg_count() { ls "$CLAUDE_SESSIONS_META_DIR" 2>/dev/null | wc -l | tr -d ' '; }
 
   # Capture the socket name mid-flight, before cleanup removes it.
   ( sleep 1; ls "$(ASK_SOCK_DIR)" > "$BATS_TEST_TMPDIR/names" 2>/dev/null ) &
-  CLAUDE_PEER_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask mute "q" --timeout 4
+  CLAUDE_SEND_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask mute "q" --timeout 4
 
   run cat "$BATS_TEST_TMPDIR/names"
   [[ "$output" == *"peer-ask-"* ]] || false
@@ -499,7 +499,7 @@ reg_count() { ls "$CLAUDE_SESSIONS_META_DIR" 2>/dev/null | wc -l | tr -d ' '; }
 @test "--ask fails for an unknown target without registering anything" {
   local before after
   before=$(ls "$CLAUDE_SESSIONS_META_DIR" | wc -l | tr -d ' ')
-  CLAUDE_PEER_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask nobody "q" --timeout 3
+  CLAUDE_SEND_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask nobody "q" --timeout 3
   [ "$status" -ne 0 ]
   [ "$status" -ne 2 ]
   after=$(ls "$CLAUDE_SESSIONS_META_DIR" | wc -l | tr -d ' ')
@@ -514,7 +514,7 @@ reg_count() { ls "$CLAUDE_SESSIONS_META_DIR" 2>/dev/null | wc -l | tr -d ' '; }
   start_listener "$sock" "$got"
   write_session $$ "mute" "$sock"
 
-  CLAUDE_PEER_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask mute "q" --timeout 3
+  CLAUDE_SEND_SOCKET_DIR="$(ASK_SOCK_DIR)" run "$PEER" --ask mute "q" --timeout 3
   [ "$status" -eq 2 ]
 
   run cat "$got"

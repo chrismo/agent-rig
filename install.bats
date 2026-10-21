@@ -763,6 +763,21 @@ OLD_CHECKOUT() { echo "$TEST_DIR/old/claude-rig"; }
   done
 }
 
+@test "bin: links for retired and renamed commands are removed" {
+  mkdir -p "$LOCAL_BIN"
+  local cmd
+  for cmd in claude-slot claude-spend claude-search claude-pod claude-peer; do
+    ln -s "$BATS_TEST_DIRNAME/bin/$cmd" "$LOCAL_BIN/$cmd"
+  done
+  run_installer
+  [ "$status" -eq 0 ]
+  for cmd in claude-slot claude-spend claude-search claude-pod claude-peer; do
+    [ ! -L "$LOCAL_BIN/$cmd" ]
+  done
+  [ -L "$LOCAL_BIN/agent-read" ]
+  [ -L "$LOCAL_BIN/claude-send" ]
+}
+
 @test "bin: analysis scripts in bin/ are not installed as commands" {
   # The install list is an allowlist for exactly this reason - adding a
   # user-facing command means adding it there, and a new .sh left in bin/

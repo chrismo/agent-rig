@@ -83,12 +83,12 @@ Skill at `skills/watch-screen/` that:
 - Applies the ANSI strip transparently.
 - Surfaces a clean, line-oriented view to the Claude reading it.
 
-Pairs naturally with `claude-pod` (see `bin/claude-pod` and the `pod-peer` skill) — same pull-on-demand read model, different substrate (PTY log vs. Claude transcript JSONL).
+Pairs naturally with `agent-read` (see `bin/agent-read` and the `pod-peer` skill) — same pull-on-demand read model, different substrate (PTY log vs. Claude transcript JSONL).
 
 ### 3. Integration ideas
 
 - **`/screen-tap start <cmd>`** — skill kicks off the wrapped command in a Ghostty split / new tab via Ghostty's keybind config or `ghostty +new-window`.
-- **Multi-tap discovery.** Like `claude-pod --peers --all --since <window>` lists recently-active Claude sessions, `/watch-screen` with no args could list `screen-tap` log files modified in the last N minutes.
+- **Multi-tap discovery.** Like `agent-read --peers --all --since <window>` lists recently-active Claude sessions, `/watch-screen` with no args could list `screen-tap` log files modified in the last N minutes.
 - **Tail-mode for live updates.** v1 stays pull-on-demand; if a use case emerges for streaming, the Monitor tool over a `tail -F` is the natural fit.
 
 ## Open questions
@@ -106,5 +106,5 @@ Pairs naturally with `claude-pod` (see `bin/claude-pod` and the `pod-peer` skill
 
 ## Related
 
-- `bin/claude-pod` (+ `skills/pod-peer/`) — sibling tool for Claude↔Claude observation via JSONL transcripts. Originally spec'd in `docs/follow-claude-spec.md`; spec was deleted once realized.
+- `bin/agent-read` (+ `skills/pod-peer/`) — sibling tool for Claude↔Claude observation via JSONL transcripts. Originally spec'd in `docs/follow-claude-spec.md`; spec was deleted once realized.
 - `script(1)` man page — note the BSD/util-linux flag divergence.

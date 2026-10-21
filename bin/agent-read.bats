@@ -2,23 +2,23 @@
 
 bats_require_minimum_version 1.5.0
 
-# Test suite for bin/claude-pod.
+# Test suite for bin/agent-read.
 #
-# claude-pod reads ~/.claude/projects/<encoded-path>/*.jsonl files and renders
+# agent-read reads ~/.claude/projects/<encoded-path>/*.jsonl files and renders
 # session conversations. Tests run with CLAUDE_PROJECTS_DIR and
 # CLAUDE_SESSIONS_META_DIR redirected into BATS_TEST_TMPDIR so they don't
 # touch the real ~/.claude.
 #
 # Requires `super` (SuperDB) — same as the script itself.
 
-POD="$BATS_TEST_DIRNAME/claude-pod"
+POD="$BATS_TEST_DIRNAME/agent-read"
 
 setup() {
   export CLAUDE_PROJECTS_DIR="$BATS_TEST_TMPDIR/.claude/projects"
   export CLAUDE_SESSIONS_META_DIR="$BATS_TEST_TMPDIR/.claude/sessions"
-  export CLAUDE_POD_CURSOR_DIR="$BATS_TEST_TMPDIR/.claude/claude-pod/cursors"
-  export CLAUDE_POD_CODEX_DIR="$BATS_TEST_TMPDIR/.codex/sessions"
-  export CLAUDE_POD_PI_DIR="$BATS_TEST_TMPDIR/.pi/agent/sessions"
+  export AGENT_READ_CURSOR_DIR="$BATS_TEST_TMPDIR/.claude/agent-read/cursors"
+  export AGENT_READ_CODEX_DIR="$BATS_TEST_TMPDIR/.codex/sessions"
+  export AGENT_READ_PI_DIR="$BATS_TEST_TMPDIR/.pi/agent/sessions"
   mkdir -p "$CLAUDE_PROJECTS_DIR" "$CLAUDE_SESSIONS_META_DIR"
   # Many tests want a clean baseline; --peers behavior depends on this.
   unset CLAUDE_CODE_SESSION_ID
@@ -33,7 +33,7 @@ setup() {
 
 # ── Fixture helpers ────────────────────────────────────────────────────────────
 
-# encode_path /tmp/foo/bar → -tmp-foo-bar (mirrors claude-pod's encode_path).
+# encode_path /tmp/foo/bar → -tmp-foo-bar (mirrors agent-read's encode_path).
 # Claude Code replaces EVERY non-alphanumeric character, not just '/'.
 encode_path() {
   printf '%s' "$1" | sed 's/[^a-zA-Z0-9]/-/g'
@@ -143,13 +143,13 @@ write_console() {
 @test "no args → prints usage, exit 0" {
   run "$POD"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Usage: claude-pod"* ]]
+  [[ "$output" == *"Usage: agent-read"* ]]
 }
 
 @test "--help → prints usage, exit 0" {
   run "$POD" --help
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Usage: claude-pod"* ]]
+  [[ "$output" == *"Usage: agent-read"* ]]
 }
 
 @test "unknown flag → exit 2" {
@@ -176,7 +176,7 @@ write_console() {
 }
 
 # Issue #17: a worktree under a Google Drive path — dots, an @, and a space —
-# resolved to a project dir that doesn't exist, so claude-pod reported "no
+# resolved to a project dir that doesn't exist, so agent-read reported "no
 # sessions" while peers were actively running. A silent false negative.
 #
 # The expected name here is derived independently (the sanitizer from the issue),
@@ -843,7 +843,7 @@ EOF
 # Codex (the OpenAI CLI) stores sessions under ~/.codex/sessions/YYYY/MM/DD/ with
 # no per-worktree directory: the worktree is recorded as payload.cwd in a
 # session_meta header line. Turns are response_item/message lines. These fixtures
-# and tests exercise the --codex source (issue #18). CLAUDE_POD_CODEX_DIR is
+# and tests exercise the --codex source (issue #18). AGENT_READ_CODEX_DIR is
 # redirected into BATS_TEST_TMPDIR by setup().
 
 # write_codex_session CWD SID [ROLE:TEXT ...]
@@ -853,7 +853,7 @@ EOF
 #   Echoes the file path.
 write_codex_session() {
   local cwd="$1" sid="$2"; shift 2
-  local day="$CLAUDE_POD_CODEX_DIR/2026/07/15"
+  local day="$AGENT_READ_CODEX_DIR/2026/07/15"
   mkdir -p "$day"
   local file="$day/rollout-2026-07-15T10-00-00-$sid.jsonl"
   {
@@ -877,7 +877,7 @@ write_codex_session() {
 #   --codex discovery must exclude.
 write_codex_subagent() {
   local cwd="$1" sid="$2"
-  local day="$CLAUDE_POD_CODEX_DIR/2026/07/15"
+  local day="$AGENT_READ_CODEX_DIR/2026/07/15"
   mkdir -p "$day"
   local file="$day/rollout-2026-07-15T10-00-00-$sid.jsonl"
   {
@@ -959,7 +959,7 @@ write_codex_subagent() {
   write_codex_session "$wt" "aaaaaaaa-1111-2222-3333-444444444444" \
     "user:ancient turn" "assistant:ancient reply" >/dev/null
   # The fixture's turns are dated 2026-07-15; a 1s window excludes them.
-  file="$CLAUDE_POD_CODEX_DIR/2026/07/15/rollout-2026-07-15T10-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl"
+  file="$AGENT_READ_CODEX_DIR/2026/07/15/rollout-2026-07-15T10-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl"
   touch -t 202401010000 "$file"
   run "$POD" --codex --since 1s "$wt"
   [ "$status" -eq 0 ]
@@ -1028,7 +1028,7 @@ write_codex_subagent() {
 
 # ── Auto source detection (no --codex/--claude flag) ────────────────────────────
 #
-# With neither flag, claude-pod picks the source that has sessions for the
+# With neither flag, agent-read picks the source that has sessions for the
 # worktree; when both do, the more recently active one wins and a hint on stderr
 # names the quiet source so a mixed worktree's other half isn't hidden.
 
@@ -1053,7 +1053,7 @@ write_codex_subagent() {
   wt=$(make_worktree awt)
   cf=$(write_session "$wt" "11111111-1111-1111-1111-111111111111")
   write_codex_session "$wt" "aaaaaaaa-1111-2222-3333-444444444444" "user:codex is fresher" >/dev/null
-  xf="$CLAUDE_POD_CODEX_DIR/2026/07/15/rollout-2026-07-15T10-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl"
+  xf="$AGENT_READ_CODEX_DIR/2026/07/15/rollout-2026-07-15T10-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl"
   touch -t 202001010000 "$cf"
   touch "$xf"
   run --separate-stderr "$POD" "$wt"
@@ -1066,7 +1066,7 @@ write_codex_subagent() {
   wt=$(make_worktree awt)
   cf=$(write_session "$wt" "11111111-1111-1111-1111-111111111111")
   write_codex_session "$wt" "aaaaaaaa-1111-2222-3333-444444444444" "user:codex here too" >/dev/null
-  xf="$CLAUDE_POD_CODEX_DIR/2026/07/15/rollout-2026-07-15T10-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl"
+  xf="$AGENT_READ_CODEX_DIR/2026/07/15/rollout-2026-07-15T10-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl"
   touch -t 202001010000 "$xf"
   touch "$cf"
   run --separate-stderr "$POD" "$wt"
@@ -1079,7 +1079,7 @@ write_codex_subagent() {
   wt=$(make_worktree awt)
   cf=$(write_session "$wt" "11111111-1111-1111-1111-111111111111")
   write_codex_session "$wt" "aaaaaaaa-1111-2222-3333-444444444444" "user:codex fresher" >/dev/null
-  xf="$CLAUDE_POD_CODEX_DIR/2026/07/15/rollout-2026-07-15T10-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl"
+  xf="$AGENT_READ_CODEX_DIR/2026/07/15/rollout-2026-07-15T10-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl"
   touch -t 202001010000 "$cf"
   touch "$xf"
   run "$POD" --claude "$wt"
@@ -1115,14 +1115,14 @@ write_codex_subagent() {
 # name is unsupported (like Codex) and --peers cannot self-exclude (documented
 # limitation, not an error).
 
-# encode_pi_path /Users/x/y → --Users-x-y-- (mirrors claude-pod's pi encoding)
+# encode_pi_path /Users/x/y → --Users-x-y-- (mirrors agent-read's pi encoding)
 encode_pi_path() {
   printf -- '--%s--' "$(printf '%s' "${1#/}" | sed 's/\//-/g')"
 }
 
 # pi_session_dir_for WORKTREE → encoded ~/.pi/agent/sessions subdir
 pi_session_dir_for() {
-  echo "$CLAUDE_POD_PI_DIR/$(encode_pi_path "$(cd "$1" && pwd)")"
+  echo "$AGENT_READ_PI_DIR/$(encode_pi_path "$(cd "$1" && pwd)")"
 }
 
 # write_pi_session WORKTREE SID [ROLE:TEXT ...]

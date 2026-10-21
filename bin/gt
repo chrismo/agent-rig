@@ -9,7 +9,7 @@
 set -euo pipefail
 
 # Where worktrees live, so a title's dir leaf resolves to a real path for the
-# preview. Matches how claude-slot resolves worktrees (~/dev/<name>).
+# preview. Worktrees live at ~/dev/<name>.
 DEV_ROOT="${DEV_ROOT:-$HOME/dev}"
 
 # ── pure helpers (unit-tested in gt.bats) ─────────────────────────────────────

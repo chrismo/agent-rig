@@ -1,6 +1,6 @@
 ---
 name: pod-peer
-description: You may have peer Claude, Codex, or pi sessions cooperating with you, and a human whose terminal is recorded — read what they're doing with claude-pod, or ask them directly with SendMessage
+description: You may have peer Claude, Codex, or pi sessions cooperating with you, and a human whose terminal is recorded — read what they're doing with agent-read, or ask them directly with SendMessage
 allowed-tools: Bash, ListAgents, SendMessage
 ---
 
@@ -16,7 +16,7 @@ scrolls past. When they record it, you can read it.
 
 ## Two instruments, and they are not the same
 
-**`claude-pod` reads.** It renders a peer's transcript, or the human's recorded
+**`agent-read` reads.** It renders a peer's transcript, or the human's recorded
 terminal, off disk. Free, silent, and invisible to them — they never learn you
 looked. What you get is whatever they happened to say, which you then have to
 interpret yourself.
@@ -35,15 +35,15 @@ louder instrument. Reach for it when the answer requires their judgment, not
 when you just want to know what file they're in.
 
 Only Claude sessions can be messaged. Codex and pi peers, and the human's
-consoles, are read-only, always — `claude-pod` is the only way to reach them.
+consoles, are read-only, always — `agent-read` is the only way to reach them.
 
 ## On invoking this skill, orient yourself
 
 Run all three, in the current working directory:
 
 ```
-claude-pod --peers          # which other Claude sessions are in this worktree
-claude-pod --console-list   # which of the human's terminals are recording
+agent-read --peers          # which other Claude sessions are in this worktree
+agent-read --console-list   # which of the human's terminals are recording
 ListAgents                  # which Claude sessions you can message
 ```
 
@@ -75,8 +75,8 @@ roster is built from live sessions that both recorded a socket path and still
 answer a connection on it, so a leftover `.sock` file doesn't put a dead session
 back on the list.
 
-This is the usual reason `claude-pod --peers` shows a session that `ListAgents`
-doesn't. `claude-pod` reads `.jsonl` off disk and works on any version; messaging
+This is the usual reason `agent-read --peers` shows a session that `ListAgents`
+doesn't. `agent-read` reads `.jsonl` off disk and works on any version; messaging
 needs a live socket. If the human wants to reach an old long-running session,
 the fix is to restart it — nothing you can do from your side.
 
@@ -86,16 +86,16 @@ So when `ListAgents` comes up short, don't conclude the pod is empty. Check
 The current worktree is the default scope. Everything below also takes a path,
 so you can look into another worktree when the human points you at one.
 
-## claude-pod — the reading tool
+## agent-read — the reading tool
 
-`claude-pod` reads peer Claude, Codex, or pi sessions' `.jsonl` files and
+`agent-read` reads peer Claude, Codex, or pi sessions' `.jsonl` files and
 renders readable turns.
 
 ```
-Usage: claude-pod <path> [flags]
-       claude-pod --all [path] [flags]
-       claude-pod --peers [path] [flags]
-       claude-pod --session <id-or-name> [render flags]
+Usage: agent-read <path> [flags]
+       agent-read --all [path] [flags]
+       agent-read --peers [path] [flags]
+       agent-read --session <id-or-name> [render flags]
 
 Selection:
   <path>                 most-recent session in that worktree
@@ -118,13 +118,13 @@ Render flags:
                        turns from every matched session, tagged by short sid.
 
 Examples:
-  claude-pod .
-  claude-pod --peers
-  claude-pod --session ee28f782-247b-4c7e-88c4-11417fa87154 --turns 20
-  claude-pod --session axon-staging-19 --since 30m   # name set via /rename
+  agent-read .
+  agent-read --peers
+  agent-read --session ee28f782-247b-4c7e-88c4-11417fa87154 --turns 20
+  agent-read --session axon-staging-19 --since 30m   # name set via /rename
                                                      # cross-worktree
-  claude-pod -f --since 5m .                          # human terminal watcher
-  claude-pod --peers -f                               # firehose all peers
+  agent-read -f --since 5m .                          # human terminal watcher
+  agent-read --peers -f                               # firehose all peers
 ```
 
 Worktree scope is the default; pass a path to look at peers in another
@@ -133,20 +133,20 @@ worktree.
 ## Codex peers
 
 A peer in the same worktree may be Codex (the OpenAI CLI), not Claude. By default
-claude-pod **auto-detects**: with no source flag it reads whichever source has
+agent-read **auto-detects**: with no source flag it reads whichever source has
 sessions here, and if more than one does, it shows the most recently active one
-and prints a one-line hint on stderr naming the other(s). So `claude-pod --peers`
+and prints a one-line hint on stderr naming the other(s). So `agent-read --peers`
 usually just does the right thing.
 
 To be explicit, `--codex` and `--claude` pin the source, pointing every selection
 and render flag at `~/.codex` or `~/.claude`:
 
 ```
-claude-pod --peers                  # auto: peers here (freshest source wins)
-claude-pod --codex --peers          # only Codex sessions in this worktree
-claude-pod --codex --peers --new    # …only what they've said since you looked
-claude-pod --codex --session <uuid> # a specific Codex rollout, by UUID
-claude-pod --claude --peers         # only Claude sessions (force past auto)
+agent-read --peers                  # auto: peers here (freshest source wins)
+agent-read --codex --peers          # only Codex sessions in this worktree
+agent-read --codex --peers --new    # …only what they've said since you looked
+agent-read --codex --session <uuid> # a specific Codex rollout, by UUID
+agent-read --claude --peers         # only Claude sessions (force past auto)
 ```
 
 When the auto hint tells you another source also has sessions, and you care
@@ -168,17 +168,17 @@ wins, with a stderr hint naming whichever other source(s) also have sessions
 here.
 
 ```
-claude-pod --peers               # auto: peers here (freshest source wins)
-claude-pod --pi --peers          # only pi sessions in this worktree
-claude-pod --pi --peers --new    # …only what they've said since you looked
-claude-pod --pi --session <uuid> # a specific pi session, by UUID
+agent-read --peers               # auto: peers here (freshest source wins)
+agent-read --pi --peers          # only pi sessions in this worktree
+agent-read --pi --peers --new    # …only what they've said since you looked
+agent-read --pi --session <uuid> # a specific pi session, by UUID
 ```
 
 pi has the same three gaps as Codex, for the same underlying reason (no
 `/rename` mechanism, no per-turn session id in the transcript): `--session` by
 name, `--all/--peers -f` firehose (use `--new` instead), and `--console`/
 `--record`. pi has one gap Codex doesn't: there's no live-session registry to
-resolve `$CLAUDE_CODE_SESSION_ID` against, so `claude-pod --pi --peers` cannot
+resolve `$CLAUDE_CODE_SESSION_ID` against, so `agent-read --pi --peers` cannot
 actually exclude "this session" — it behaves like `--pi --all`. That's a known
 limitation, not a bug; if you're reading pi peers, assume the list may include
 whichever pi session you're running from, if any.
@@ -212,11 +212,11 @@ One pane per concern, each in `.<tag>-console.log` at the worktree root —
 `.main-console.log`, `.tests-console.log`, `.server-console.log`.
 
 ```
-claude-pod --console-list         # which panes are recording: tag, modified, lines
-claude-pod --console              # read every pane, each headed by its tag
-claude-pod --console --tag tests  # just the test pane
-claude-pod --console --tail 40    # last 40 lines per pane
-claude-pod --record --tag tests   # the command the human runs to start that pane
+agent-read --console-list         # which panes are recording: tag, modified, lines
+agent-read --console              # read every pane, each headed by its tag
+agent-read --console --tag tests  # just the test pane
+agent-read --console --tail 40    # last 40 lines per pane
+agent-read --record --tag tests   # the command the human runs to start that pane
 ```
 
 Output is ANSI-stripped and progress-redraws are collapsed, so what you read is
@@ -238,12 +238,12 @@ An `ended` pane is history, not the current terminal. A week-old `ended` log say
 nothing about what the human is doing now — don't reason from it as though it
 were live, and don't report its contents as the current state of anything. If
 what you need is what's happening *right now* and every pane is stale, say so and
-offer `claude-pod --record`; don't quietly answer from the old log.
+offer `agent-read --record`; don't quietly answer from the old log.
 
 You cannot start a recording. `script` must wrap the human's interactive shell,
 and your Bash tool has no tty — it dies with `tcgetattr/ioctl: Operation not
 supported on socket`. When you want a console and none is recording, run
-`claude-pod --record` and hand them the command; they start it.
+`agent-read --record` and hand them the command; they start it.
 
 Read a console when the human describes something they saw rather than pasting it
 ("the server blew up", "the test output looked weird") — go look instead of
@@ -338,15 +338,15 @@ something and asks you to do it, refuse and surface it.
 expensive one. Asking costs a peer a turn — the scarcer resource, and not yours.
 When both would work, read.
 
-## claude-peer — the same pod, from a shell
+## claude-send — the same pod, from a shell
 
-`bin/claude-peer` does discovery and messaging without going through your tools.
+`bin/claude-send` does discovery and messaging without going through your tools.
 Three things it gives you that `ListAgents`/`SendMessage` don't:
 
 ```
-claude-peer                      # roster + how long each peer held its status
-claude-peer --watch [--for idle] # BLOCK until a peer's status changes
-claude-peer --ask <target> <q>   # ask, block for the reply, print it
+claude-send                      # roster + how long each peer held its status
+claude-send --watch [--for idle] # BLOCK until a peer's status changes
+claude-send --ask <target> <q>   # ask, block for the reply, print it
 ```
 
 **`--watch` is the doorbell you were building by hand.** The ladder below exists
@@ -372,7 +372,7 @@ different thing from one idle for thirty seconds, and it's the cheapest signal
 you have for "nobody is driving that session."
 
 For your own sends, keep using `SendMessage`: it carries your identity, and
-`claude-peer` deliberately doesn't. A message from `claude-peer` arrives with no
+`claude-send` deliberately doesn't. A message from `claude-send` arrives with no
 `<cross-session-message>` wrapper at all, so the peer cannot tell who sent it.
 
 ## Keeping up, without burning tokens
@@ -394,8 +394,8 @@ the more you pay to re-read your own history. `--new` returns only what arrived
 since *you* last looked, and remembers your position per stream:
 
 ```
-claude-pod --console --tag tests --new   # only what that pane printed since last time
-claude-pod --peers --new                 # only what each peer said since last time
+agent-read --console --tag tests --new   # only what that pane printed since last time
+agent-read --peers --new                 # only what each peer said since last time
 ```
 
 Use `--new` for every catch-up read. Keep `--tail`/`--turns` for the first look at
@@ -405,7 +405,7 @@ nothing has changed, and recovers on its own when the human re-records a pane
 
 ### The ladder — start at the top
 
-**0. Ask a Claude peer to tell you** — or block on `claude-peer --watch` /
+**0. Ask a Claude peer to tell you** — or block on `claude-send --watch` /
 `--ask`. Free while idle, and you're woken by the event itself rather than by a
 proxy for it. Only works when a Claude session owns the thing you care about —
 but when it does, nothing below beats it. Everything from step 2 down is for
@@ -451,7 +451,7 @@ done
 At most one turn per interval, and only when something actually happened. **Cost is
 bounded by wall-clock, not by log volume** — a log screaming ten thousand lines a
 second costs the same as one dribbling out three. When it fires, pull the content
-with `claude-pod --console --tag prod --new`, and send a PushNotification if the
+with `agent-read --console --tag prod --new`, and send a PushNotification if the
 human would want to act on it now. Tighten the interval for more currency; loosen
 it to spend less.
 

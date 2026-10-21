@@ -10,7 +10,6 @@ ROOT="$BATS_TEST_DIRNAME/.."
 
 scripts() {
   printf '%s\n' \
-    "$ROOT/bin/claude-slot" \
     "$ROOT/bin/claude-tabs" \
     "$ROOT/bin/claude-tabs.integration-test.sh" \
     "$ROOT/bin/gt" \

@@ -210,7 +210,7 @@ Established by comparing four deliveries into one session:
 | sender | envelope seen by receiver |
 |---|---|
 | raw `AF_UNIX` write | none |
-| `bin/claude-peer` | none |
+| `bin/claude-send` | none |
 | `SendMessage` with a ref | present, populated |
 | `SendMessage` with a bare name | present, identical |
 
@@ -314,7 +314,7 @@ ask-probe [f17ed5]  ·  interactive  ·  waiting  ·  started 2s ago
 ```
 
 `SendMessage` to that name then delivered the bytes shown in the capture above.
-This is what `bin/claude-peer --ask` does: register, ask, block for the reply,
+This is what `bin/claude-send --ask` does: register, ask, block for the reply,
 deregister.
 
 **Two obligations if you do this.** Name the socket so it cannot be confused

@@ -4,7 +4,6 @@
 # Run with: bats test/claude-tabs.bats
 
 CLAUDE_TABS="${BATS_TEST_DIRNAME}/../bin/claude-tabs"
-CLAUDE_SLOT="${BATS_TEST_DIRNAME}/../bin/claude-slot"
 
 setup() {
   TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/claude-tabs-test.XXXXXX")"
@@ -419,7 +418,7 @@ MANIFEST
 # restore
 # ─────────────────────────────────────────────────────────────────────────────
 
-@test "restore generates claude-slot commands from manifest" {
+@test "restore dry-run prints a resume command per manifest entry" {
   source "$CLAUDE_TABS"
 
   # Write a manifest directly
@@ -433,8 +432,8 @@ MANIFEST
   export CLAUDE_TABS_DRY_RUN=1
   run cmd_restore
   [[ "$status" -eq 0 ]] || false
-  [[ "$output" == *"/Users/chrismo/dev/ds5 --resume abc-123"* ]] || false
-  [[ "$output" == *"/Users/chrismo/dev/mta --resume def-456"* ]]
+  [[ "$output" == *"cd /Users/chrismo/dev/ds5 && claude --resume abc-123"* ]] || false
+  [[ "$output" == *"cd /Users/chrismo/dev/mta && claude --resume def-456"* ]]
 }
 
 @test "restore fails gracefully with missing manifest" {
@@ -599,69 +598,4 @@ MANIFEST
   local count
   count=$(ls "$CLAUDE_TABS_HISTORY_DIR" | wc -l | tr -d ' ')
   [[ "$count" -eq 2 ]]
-}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# claude-slot --resume flag parsing
-# ─────────────────────────────────────────────────────────────────────────────
-
-@test "claude-slot builds resume command" {
-  export PATH="$TEST_DIR/bin:$PATH"
-  mkdir -p "$TEST_DIR/bin"
-  printf '#!/bin/bash\nexit 0\n' > "$TEST_DIR/bin/osascript"
-  chmod +x "$TEST_DIR/bin/osascript"
-
-  export CLAUDE_SLOT_CMD_DIR="$TEST_DIR/slot-cmd"
-  mkdir -p "$TEST_DIR/worktree"
-  run "$CLAUDE_SLOT" "$TEST_DIR/worktree" --resume abc-123-def
-  [[ "$status" -eq 0 ]] || false
-
-  cmd=$(cat "$CLAUDE_SLOT_CMD_DIR/cmd.txt")
-  [[ "$cmd" == *"claude --resume abc-123-def"* ]]
-}
-
-@test "claude-slot resume flag does not include prompt" {
-  export PATH="$TEST_DIR/bin:$PATH"
-  mkdir -p "$TEST_DIR/bin"
-  printf '#!/bin/bash\nexit 0\n' > "$TEST_DIR/bin/osascript"
-  chmod +x "$TEST_DIR/bin/osascript"
-
-  export CLAUDE_SLOT_CMD_DIR="$TEST_DIR/slot-cmd"
-  mkdir -p "$TEST_DIR/worktree"
-  run "$CLAUDE_SLOT" "$TEST_DIR/worktree" --resume abc-123
-  [[ "$status" -eq 0 ]] || false
-
-  cmd=$(cat "$CLAUDE_SLOT_CMD_DIR/cmd.txt")
-  [[ "$cmd" == *"claude --resume abc-123"* ]] || false
-  [[ "$cmd" != *"claude --resume abc-123 \""* ]]
-}
-
-@test "claude-slot without --resume still works with prompt" {
-  export PATH="$TEST_DIR/bin:$PATH"
-  mkdir -p "$TEST_DIR/bin"
-  printf '#!/bin/bash\nexit 0\n' > "$TEST_DIR/bin/osascript"
-  chmod +x "$TEST_DIR/bin/osascript"
-
-  export CLAUDE_SLOT_CMD_DIR="$TEST_DIR/slot-cmd"
-  mkdir -p "$TEST_DIR/worktree"
-  run "$CLAUDE_SLOT" "$TEST_DIR/worktree" /dialogue outline
-  [[ "$status" -eq 0 ]] || false
-
-  cmd=$(cat "$CLAUDE_SLOT_CMD_DIR/cmd.txt")
-  [[ "$cmd" == *'claude "/dialogue outline"'* ]]
-}
-
-@test "claude-slot without --resume and no prompt starts plain claude" {
-  export PATH="$TEST_DIR/bin:$PATH"
-  mkdir -p "$TEST_DIR/bin"
-  printf '#!/bin/bash\nexit 0\n' > "$TEST_DIR/bin/osascript"
-  chmod +x "$TEST_DIR/bin/osascript"
-
-  export CLAUDE_SLOT_CMD_DIR="$TEST_DIR/slot-cmd"
-  mkdir -p "$TEST_DIR/worktree"
-  run "$CLAUDE_SLOT" "$TEST_DIR/worktree"
-  [[ "$status" -eq 0 ]] || false
-
-  cmd=$(cat "$CLAUDE_SLOT_CMD_DIR/cmd.txt")
-  [[ "$cmd" == *"&& claude" ]]
 }

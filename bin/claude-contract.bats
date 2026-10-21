@@ -8,7 +8,7 @@ bats_require_minimum_version 1.5.0
 # API. None of it is guaranteed to survive a point release. This suite asserts
 # that each load-bearing assumption still holds against the CURRENTLY INSTALLED
 # build, so a breaking change surfaces here instead of as a mysteriously empty
-# claude-tabs or a claude-pod that renders nothing.
+# claude-tabs or an agent-read that renders nothing.
 #
 # Each test is prefixed with an assumption ID (A1, B2, …). Those IDs are the
 # join to docs/internals-contract.md, which says what each one is for, who
@@ -122,7 +122,7 @@ assert_anchor() {
   [ "$found" -eq 1 ] || skip "no live sessions to check"
 }
 
-@test "B3: registry records still carry the fields claude-tabs and claude-pod read" {
+@test "B3: registry records still carry the fields claude-tabs and agent-read read" {
   [ -d "$SESSIONS_DIR" ] || skip "no registry at $SESSIONS_DIR"
   local f
   f=$(ls -t "$SESSIONS_DIR"/*.json 2>/dev/null | head -1) || true
@@ -237,22 +237,22 @@ sys.exit(0 if ok else 1)
     return 1; }
 }
 
-# --- E: addressability, what claude-peer --ask stands on -----------------
+# --- E: addressability, what claude-send --ask stands on -----------------
 
 @test "E1: the session registry directory is writable" {
   [ -d "$SESSIONS_DIR" ] || skip "no registry at $SESSIONS_DIR"
   local probe="$SESSIONS_DIR/.agent-rig-write-probe"
   echo x > "$probe" 2>/dev/null || {
-    echo "cannot write $SESSIONS_DIR — claude-peer --ask cannot register" >&2
+    echo "cannot write $SESSIONS_DIR — claude-send --ask cannot register" >&2
     return 1; }
   rm -f "$probe"
 }
 
 @test "E2: a roster entry needs only a live pid and an answering socket" {
   # The assumption most likely to be closed off deliberately. Asserted the same
-  # way claude-peer relies on it: register a plain process, confirm claude-peer
+  # way claude-send relies on it: register a plain process, confirm claude-send
   # (which reimplements rfa) lists it, then clean up.
-  local peer="$BATS_TEST_DIRNAME/claude-peer"
+  local peer="$BATS_TEST_DIRNAME/claude-send"
   command -v python3 >/dev/null || skip "python3 required"
 
   run python3 -c '
@@ -287,7 +287,7 @@ finally:
 }
 
 @test "E4: a uds: socket path is still a valid SendMessage target" {
-  # What claude-peer --ask stands on: it hands the peer a uds: path to answer.
+  # What claude-send --ask stands on: it hands the peer a uds: path to answer.
   # The tool's own prompt is the authority — "To reply to an incoming message,
   # copy its `from` attribute as your `to`." If that guidance is gone, a shell
   # process has no way to receive a reply.

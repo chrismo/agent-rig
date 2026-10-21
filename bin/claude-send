@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
 #
-# claude-peer - list and message live Claude sessions, from a shell
+# claude-send - list and message live Claude sessions, from a shell
 #
 # Claude's own ListAgents/SendMessage tools are only callable by Claude. This
 # does the same two jobs from outside: any script, cron job, CI step or git hook
 # can see which sessions are running and drop a message into one.
 #
-#   claude-peer                       # reachable peers: name, pid, ref, age, cwd
-#   claude-peer --all                 # include sessions that no longer answer
-#   claude-peer --send <target> <msg> # deliver a message; target is name|pid|ref
-#   claude-peer --send <target> -     # read the message body from stdin
-#   claude-peer --watch               # block until any peer's status changes
-#   claude-peer --watch --for idle    # block until a peer reaches that status
-#   claude-peer --ask <target> <q>    # ask, block for the reply, print it
-#   claude-peer --ask ... --register  # also be findable on the roster while asking
+#   claude-send                       # reachable peers: name, pid, ref, age, cwd
+#   claude-send --all                 # include sessions that no longer answer
+#   claude-send --send <target> <msg> # deliver a message; target is name|pid|ref
+#   claude-send --send <target> -     # read the message body from stdin
+#   claude-send --watch               # block until any peer's status changes
+#   claude-send --watch --for idle    # block until a peer reaches that status
+#   claude-send --ask <target> <q>    # ask, block for the reply, print it
+#   claude-send --ask ... --register  # also be findable on the roster while asking
 #
-#   claude-peer --send builder "deploy finished, tests green"
-#   ./run-tests.sh || claude-peer --send builder "suite went red"
-#   claude-peer --watch --for idle && say "a session went idle"
+#   claude-send --send builder "deploy finished, tests green"
+#   ./run-tests.sh || claude-send --send builder "suite went red"
+#   claude-send --watch --for idle && say "a session went idle"
 #
 # --watch is a doorbell, not a poller: it blocks and prints one line when
 # something changes, so a caller pays for one wake-up rather than one per tick.
-# Exit 0 on a change, 2 on --timeout, so `if claude-peer --watch …` reads right.
+# Exit 0 on a change, 2 on --timeout, so `if claude-send --watch …` reads right.
 #
 # How it works (see docs/inter-claude-protocol.md — none of this is a supported
 # API, and bin/claude-contract.bats is what tells you when it stops being true):
@@ -45,10 +45,10 @@ set -uo pipefail
 
 SESSIONS_DIR="${CLAUDE_SESSIONS_META_DIR:-$HOME/.claude/sessions}"
 SELF_SOCK="${CLAUDE_CODE_MESSAGING_SOCKET:-}"
-PROBE_TIMEOUT="${CLAUDE_PEER_PROBE_TIMEOUT:-1}"
-SOCKET_DIR="${CLAUDE_PEER_SOCKET_DIR:-/tmp/cc-socks}"
+PROBE_TIMEOUT="${CLAUDE_SEND_PROBE_TIMEOUT:-1}"
+SOCKET_DIR="${CLAUDE_SEND_SOCKET_DIR:-/tmp/cc-socks}"
 
-die() { echo "claude-peer: $*" >&2; exit 1; }
+die() { echo "claude-send: $*" >&2; exit 1; }
 
 usage() {
   sed -n '3,28p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -224,7 +224,7 @@ resolve_target() {
   done <<< "$rows"
 
   [[ "$count" -eq 0 ]] && return 1
-  [[ "$count" -gt 1 ]] && { echo "claude-peer: '$want' matches $count sessions; use a pid or ref" >&2; return 2; }
+  [[ "$count" -gt 1 ]] && { echo "claude-send: '$want' matches $count sessions; use a pid or ref" >&2; return 2; }
   printf '%s\n' "$match"
 }
 
@@ -238,7 +238,7 @@ cmd_send() {
   local resolved rc sock name pid
   resolved=$(resolve_target "$want"); rc=$?
   [[ $rc -eq 2 ]] && exit 1
-  [[ $rc -ne 0 ]] && die "no session matching '$want' (try: claude-peer --all)"
+  [[ $rc -ne 0 ]] && die "no session matching '$want' (try: claude-send --all)"
 
   IFS=$'\t' read -r sock name pid <<< "$resolved"
 
@@ -276,7 +276,7 @@ cmd_ask() {
   [[ $# -ge 2 ]] || die "no question (use - to read stdin)"
   shift 2
 
-  local timeout=60 ask_name="claude-peer-ask"
+  local timeout=60 ask_name="claude-send-ask"
   # NOT local: the EXIT trap fires after this function has returned, and bash
   # locals are gone by then — cleanup would run with empty paths and delete
   # nothing, silently leaking a socket and a registry entry.
@@ -284,7 +284,7 @@ cmd_ask() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --timeout)  timeout="${2:-60}"; shift 2 ;;
-      --name)     ask_name="${2:-claude-peer-ask}"; shift 2 ;;
+      --name)     ask_name="${2:-claude-send-ask}"; shift 2 ;;
       --register) register="yes"; shift ;;
       *)          die "unknown --ask option '$1'" ;;
     esac
@@ -296,7 +296,7 @@ cmd_ask() {
   local resolved rc sock name pid
   resolved=$(resolve_target "$want"); rc=$?
   [[ $rc -eq 2 ]] && exit 1
-  [[ $rc -ne 0 ]] && die "no session matching '$want' (try: claude-peer --all)"
+  [[ $rc -ne 0 ]] && die "no session matching '$want' (try: claude-send --all)"
   IFS=$'\t' read -r sock name pid <<< "$resolved"
 
   [[ -n "$SELF_SOCK" && "$sock" == "$SELF_SOCK" ]] && die "'$want' is this session"

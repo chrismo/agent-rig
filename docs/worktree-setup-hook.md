@@ -9,8 +9,8 @@ A new worktree of a large compiled project is useless for the first several
 minutes of its life. The source is there instantly; the build artifacts are not,
 and a cold build in a big Rust or C++ tree is measured in minutes, not seconds.
 That cost is paid *every* time a worktree is created, which quietly discourages
-creating them — and cheap worktrees are the substrate that `claude-slot`,
-`claude-pod`, and `claude-peer` run parallel sessions on.
+creating them — and cheap worktrees are the substrate that `claude-send`,
+`agent-read`, and the like run parallel sessions on.
 
 The fix is per-repo and per-machine: some build state can be copied from a
 sibling worktree far faster than it can be regenerated, and on a

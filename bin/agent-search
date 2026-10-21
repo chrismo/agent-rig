@@ -17,8 +17,6 @@
 # and tool-result messages so only real user prompts are returned.
 #
 # Requires: super (SuperDB), grdy, python3.
-#
-# Formerly claude-search; bin/claude-search is a symlink kept for muscle memory.
 
 set -euo pipefail
 shopt -s nullglob
