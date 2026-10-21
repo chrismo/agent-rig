@@ -98,6 +98,17 @@ Pairs naturally with `agent-read` (see `bin/agent-read` and the `pod-peer` skill
 - **Should the wrapper auto-strip ANSI into a parallel `.txt` log,** or leave stripping to the consumer? Auto-strip is friendlier for Claude; raw `.log` is friendlier for `scriptreplay`.
 - **Does any of this matter enough to build,** or is `script -q -F <path> <cmd>` short enough as a shell alias that the wrapper is over-engineering? The OS-flag-difference foot-gun is the strongest argument for a wrapper.
 
+## How it's used in practice (2026-10-21)
+
+Recording is rarely the path chrismo takes. The everyday options are:
+
+- **A few lines:** copy/paste between the two Ghostty splits.
+- **A long section:** Cmd+Shift+J has Ghostty write the whole terminal to a file and print the filename; chrismo pastes that filename into the Claude pane.
+
+Both are instant and retroactive, and chrismo chooses what Claude sees. Recording has to be started before the pane's work begins, and the effort of pasting a filename is about the same either way.
+
+Anything long-running that Claude can run itself, Claude runs directly, so an unattended *human* terminal is rare. The case recording exists for is a pane Claude must not touch, such as a connection to prod running a `/watch` in psql, with Claude monitoring the log. That's a back-pocket tool, not a daily one. Don't read its rarity as a reason to remove it.
+
 ## Out of scope
 
 - Cross-host log shipping. v1 assumes consumer and producer are on the same machine.
