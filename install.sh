@@ -383,15 +383,15 @@ fi
 # (docs/skills.md in the pi package), so one source can feed both harnesses.
 #
 # An allowlist, not a glob, and a short one. Most skills here instruct tools that
-# exist only in Claude Code — goal-compose drives /goal, consult needs
-# SendMessage, the lemma-* skills call lemmalog_* MCP tools by name — and a skill
+# exist only in Claude Code — goal-compose drives /goal, the lemma-* skills
+# call lemmalog_* MCP tools by name — and a skill
 # that tells pi to use a tool pi does not have is worse than an absent skill.
 # When a skill stops depending on Claude-only tools, add it here.
 #
 # Gated on pi's agent dir already existing: this repo is deployed to machines
 # that will never run pi, and an installer that invents ~/.pi on them is
 # claiming ownership of a tool that is not installed.
-PI_SKILLS=(autopilot dialogue kaomoji simplify work-context)
+PI_SKILLS=(autopilot consult dialogue kaomoji simplify work-context)
 if [[ -d "$PI_AGENT_DIR" ]]; then
   mkdir -p "$PI_SKILLS_DEST"
   pi_linked=0

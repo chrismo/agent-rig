@@ -1,13 +1,13 @@
 ---
 name: consult
-description: Consult another Claude, Codex, or pi session, in this worktree or another — read what it did, or ask it directly with SendMessage — and read the human's recorded terminal when there is one
+description: Consult another Claude, Codex, or pi session, in this worktree or another — read what it did, ask a Claude peer via SendMessage or claude-send, or read the human's recorded terminal
 allowed-tools: Bash, ListAgents, SendMessage
 ---
 
 # consult — you have peers
 
-You may have other Claude sessions cooperating with you, often in the same
-worktree but not always. They are working on related (or the same) problems.
+You may have other Claude, Codex, or pi sessions cooperating with you, often in
+the same worktree but not always. They are working on related (or the same) problems.
 You are not alone.
 
 The human is a peer too. Their terminal — the one you never see — is where the
@@ -21,7 +21,7 @@ terminal, off disk. Free, silent, and invisible to them — they never learn you
 looked. What you get is whatever they happened to say, which you then have to
 interpret yourself.
 
-**`SendMessage` asks.** It puts a question into another Claude session's context
+**`SendMessage` (or `claude-send --ask` from pi) asks.** It puts a question into another Claude session's context
 and gets an answer back. What returns is not transcript — it's a *conclusion*,
 computed by an agent that already holds the whole problem in context. Things
 that were never written down anywhere ("that's parked, not committed to") come
@@ -39,13 +39,18 @@ consoles, are read-only, always — `agent-read` is the only way to reach them.
 
 ## On invoking this skill, orient yourself
 
-Run all three, in the current working directory:
+Run these in the current working directory:
 
 ```
-agent-read --peers          # which other Claude sessions are in this worktree
+agent-read --peers          # Claude, Codex, or pi sessions in this worktree
 agent-read --console-list   # which of the human's terminals are recording
-ListAgents                  # which Claude sessions you can message
 ```
+
+Then list messageable Claude peers: use `ListAgents` if that tool is available;
+otherwise (including in pi) run `claude-send` through your shell tool. Below,
+`ListAgents` means that roster; the shell roster covers local Claude sessions,
+not Claude's cloud or Remote Control sessions. If `claude-send` is not installed,
+say messaging is unavailable and continue with `agent-read`.
 
 All three are cheap — one line per session, one per pane. They tell you *what
 exists*, not what it says. Don't read any contents yet; read a session or a
@@ -53,7 +58,7 @@ console when you have a reason to (below). Report what you found in a sentence,
 so the human knows what you can see.
 
 `--peers` and `ListAgents` overlap but are not the same list, and the difference
-matters. `--peers` is scoped to a worktree and sees Codex as well as Claude.
+matters. `--peers` is scoped to a worktree and sees Codex and pi as well as Claude.
 `ListAgents` is scoped to the machine and sees only sessions you can address —
 including ones in other worktrees entirely, plus your cloud sessions. A session
 can appear in one and not the other. Remote bridge sessions also show up but are
@@ -252,6 +257,25 @@ works in *their* environment rather than in a tool-call subshell.
 
 ## Talking to peers
 
+**Choose the tools your harness actually has.** In Claude Code, use `ListAgents`
+and `SendMessage` as described below. In pi (or any harness without those tools),
+use the local shell interface instead:
+
+```bash
+claude-send
+claude-send --ask <target> "<question, including who's asking and from where>"
+claude-send --send <target> "<one-way message, including who's sending>"
+```
+
+Use a name, PID, or ref from the shell roster as `<target>`; do not copy Claude's
+`name [ref]` addressing syntax into shell commands. `--ask` supplies a temporary
+reply address and prints the answer; `--send` is fire-and-forget. `--ask` defaults
+to a 60-second timeout (exit 2); a timeout does not mean the question was not
+delivered, so don't automatically send it again. Match your shell tool's timeout
+to the wait. The permission boundary and message-writing guidance below apply to
+both interfaces. The ref and inbound-address rules in the next paragraphs are
+for Claude's native tools, not the shell interface.
+
 `ListAgents` gives you the roster; `SendMessage` sends to a row on it.
 
 ```
@@ -371,9 +395,10 @@ That `FOR` column is an abandonment detector — a peer idle for hours is a
 different thing from one idle for thirty seconds, and it's the cheapest signal
 you have for "nobody is driving that session."
 
-For your own sends, keep using `SendMessage`: it carries your identity, and
-`claude-send` deliberately doesn't. A message from `claude-send` arrives with no
-`<cross-session-message>` wrapper at all, so the peer cannot tell who sent it.
+When `SendMessage` is available, prefer it for your own sends: it carries your
+session identity. In pi, use `claude-send` and identify yourself and your worktree
+in the message body. `--send` has no reply address or `<cross-session-message>`
+wrapper; `--ask` supplies a temporary reply address, not your pi session identity.
 
 ## Keeping up, without burning tokens
 
@@ -417,8 +442,9 @@ idle. Read when the human mentions something they saw, when a peer might overlap
 your work, or at a natural checkpoint. Right for slow, multitasked work — which
 is most work. Stay here unless there's a reason to leave.
 
-**2. Waiting for one specific thing?** Use Bash `run_in_background` with a
-condition that *exits*:
+**2. Waiting for one specific thing?** If your harness supports background shell
+calls, use one with a condition that *exits*. Otherwise use a bounded foreground
+wait within your shell tool's timeout, or stay with on-demand reads:
 
 ```
 until grep -q "Ready in" .server-console.log; do sleep 1; done
@@ -428,6 +454,9 @@ Exactly one turn, when it trips. Right for "tell me when the suite finishes."
 
 **3. High attention (an outage, a live debugging session)? Use Monitor as a
 coalescing doorbell.**
+
+This step requires a Monitor tool; if your harness has none (as in stock pi),
+stay with on-demand reads or bounded shell waits. Do not invent a Monitor call.
 
 Monitor turns **every stdout line into a model turn**. So piping a raw `tail -f`
 into it costs a turn *per log line* — that, and not Monitor itself, is what makes
@@ -451,8 +480,8 @@ done
 At most one turn per interval, and only when something actually happened. **Cost is
 bounded by wall-clock, not by log volume** — a log screaming ten thousand lines a
 second costs the same as one dribbling out three. When it fires, pull the content
-with `agent-read --console --tag prod --new`, and send a PushNotification if the
-human would want to act on it now. Tighten the interval for more currency; loosen
+with `agent-read --console --tag prod --new`, and notify the human if they would
+want to act on it now (use PushNotification only if that tool is available). Tighten the interval for more currency; loosen
 it to spend less.
 
 Nothing is missed: the doorbell doesn't judge importance, it only says "there's new

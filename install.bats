@@ -500,8 +500,8 @@ EOF
 # pi discovers any directory containing a SKILL.md under its agent dir's skills/
 # (docs/skills.md), so the skills in this repo can serve both harnesses from one
 # source. Allowlisted, not globbed: most skills here instruct Claude-only tools
-# (goal-compose's /goal, consult's SendMessage, the lemma-* skills' lemmalog_*
-# MCP tools) and would be dead weight or actively misleading inside pi.
+# (goal-compose's /goal, the lemma-* skills' lemmalog_* MCP tools) and would
+# be dead weight or actively misleading inside pi.
 
 @test "pi: skills are not installed when pi is not set up on this machine" {
   run_installer
@@ -521,12 +521,20 @@ EOF
   [ -L "$PI_CODING_AGENT_DIR/skills/simplify" ]
 }
 
+@test "pi: consult is symlinked with its harness-aware instructions" {
+  mkdir -p "$PI_CODING_AGENT_DIR"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ -L "$PI_CODING_AGENT_DIR/skills/consult" ]
+  [ "$(readlink "$PI_CODING_AGENT_DIR/skills/consult")" = "$BATS_TEST_DIRNAME/skills/consult" ]
+  [ -f "$PI_CODING_AGENT_DIR/skills/consult/SKILL.md" ]
+}
+
 @test "pi: Claude-only skills are not symlinked into pi" {
   mkdir -p "$PI_CODING_AGENT_DIR"
   run_installer
   [ "$status" -eq 0 ]
   [ ! -e "$PI_CODING_AGENT_DIR/skills/goal-compose" ]
-  [ ! -e "$PI_CODING_AGENT_DIR/skills/consult" ]
   [ ! -e "$PI_CODING_AGENT_DIR/skills/lemma-drain" ]
 }
 
