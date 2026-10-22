@@ -49,51 +49,59 @@ settings_get() {
 
 # ── Fresh install ──────────────────────────────────────────────────────────────
 
-@test "fresh install: creates settings.json from scratch" {
+@test "fresh install: settings, permissions, and sandbox defaults" {
   run_installer
   [ "$status" -eq 0 ]
   [ -f "$CLAUDE_DIR/settings.json" ]
-}
 
-@test "fresh install: statusLine is configured" {
-  run_installer
-  [ "$status" -eq 0 ]
   local type
   type=$(settings_get 'this.statusLine.type')
   [ "$type" = "command" ]
-}
 
-@test "fresh install: PreToolUse hook is configured" {
-  run_installer
-  [ "$status" -eq 0 ]
   local matcher
   matcher=$(settings_get 'this.hooks.PreToolUse[0].matcher')
   [ "$matcher" = "Bash" ]
+
+  for event in UserPromptSubmit PermissionRequest PostToolUse Stop; do
+    local count
+    count=$(settings_get "count(this.hooks.$event)")
+    [ "$count" -ge 1 ]
+  done
+
+  local allows
+  allows=$(settings_get 'this.permissions.allow')
+  [[ "$allows" == *"Edit(.claude/tmp/*)"* ]] || false
+  [[ "$allows" == *"Edit(tmp/*)"* ]]
+
+  local paths
+  paths=$(settings_get 'join(this.sandbox.filesystem.allowWrite, ",")')
+  [[ "$paths" == *"~/.claude/logs"* ]] || false
+  [[ "$paths" == *"~/.claude/contexts"* ]]
+
+  ! grep -q 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE' "$CLAUDE_DIR/settings.json"
 }
 
-@test "fresh install: SessionStart carries the drift and lemmalog hooks" {
-  # SessionStart was retired once, then brought back by d220e69 for
-  # internals-drift.sh. This suite asserted the retirement long after it
-  # stopped being true; it now asserts what the installer actually writes.
+@test "fresh install: drift and lemmalog hooks" {
   run_installer
   [ "$status" -eq 0 ]
-  local count drift brief
+  local count drift brief cmd matcher
   count=$(settings_get 'len(this.hooks.SessionStart)')
   [ "$count" -eq 2 ]
   drift=$(settings_get 'this.hooks.SessionStart[0].hooks[0].command')
   [[ "$drift" == *"internals-drift.sh"* ]] || false
   brief=$(settings_get 'this.hooks.SessionStart[1].hooks[0].command')
   [[ "$brief" == *"lemma-brief.sh"* ]]
-}
 
-@test "fresh install: all four event hooks are configured" {
-  run_installer
-  [ "$status" -eq 0 ]
-  for event in UserPromptSubmit PermissionRequest PostToolUse Stop; do
-    local count
-    count=$(settings_get "count(this.hooks.$event)")
-    [ "$count" -ge 1 ]
-  done
+  count=$(settings_get 'len(this.hooks.PostToolUse)')
+  [ "$count" -eq 2 ]
+  matcher=$(settings_get 'this.hooks.PostToolUse[1].matcher')
+  [ "$matcher" = "Bash" ]
+  cmd=$(settings_get 'this.hooks.PostToolUse[1].hooks[0].command')
+  [[ "$cmd" == *"lemma-commit.sh"* ]]
+
+  # A prefix prefilter misses compound commands like cd <repo> && git commit.
+  run settings_get 'this.hooks.PostToolUse[1].hooks[0].if'
+  [ "$status" -ne 0 ] || [ "$output" = "error(\"missing\")" ]
 }
 
 @test "hooks: a user's own SessionStart entry is replaced by ours on re-install" {
@@ -142,32 +150,7 @@ EOF
   [ "$matcher" = "Bash" ]
 }
 
-@test "fresh install: PostToolUse carries the lemmalog commit hook" {
-  # Appended alongside the tab-status entry rather than replacing it: the
-  # hook queues commits for later assertion into lemmalog.
-  run_installer
-  [ "$status" -eq 0 ]
-  local count cmd matcher
-  count=$(settings_get 'len(this.hooks.PostToolUse)')
-  [ "$count" -eq 2 ]
-  matcher=$(settings_get 'this.hooks.PostToolUse[1].matcher')
-  [ "$matcher" = "Bash" ]
-  cmd=$(settings_get 'this.hooks.PostToolUse[1].hooks[0].command')
-  [[ "$cmd" == *"lemma-commit.sh"* ]]
-}
-
-@test "fresh install: the lemmalog commit hook has no if: prefilter" {
-  # `if: "Bash(git commit *)"` would stop the hook spawning for non-matching
-  # commands, but it is a prefix STRING match with no shell parsing, so it
-  # misses `cd <repo> && git commit ...` -- the common shape here. The script
-  # filters on tool_input.command instead.
-  run_installer
-  [ "$status" -eq 0 ]
-  run settings_get 'this.hooks.PostToolUse[1].hooks[0].if'
-  [ "$status" -ne 0 ] || [ "$output" = "error(\"missing\")" ]
-}
-
-@test "fresh install: Stop hook includes claude-tabs save" {
+@test "fresh install: tab status and session save hooks" {
   run_installer
   [ "$status" -eq 0 ]
   local count cmd
@@ -175,36 +158,15 @@ EOF
   [ "$count" -eq 2 ]
   cmd=$(settings_get 'this.hooks.Stop[1].hooks[0].command')
   [[ "$cmd" == *"claude-tabs save"* ]]
-}
 
-@test "fresh install: Stop hook resolves status via tab-status stop (bg-aware)" {
-  run_installer
-  [ "$status" -eq 0 ]
-  local cmd
   cmd=$(settings_get 'this.hooks.Stop[0].hooks[0].command')
   [[ "$cmd" == *"tab-status --hook stop"* ]]
-}
 
-@test "fresh install: UserPromptSubmit engages (clears the bg reminder)" {
-  run_installer
-  [ "$status" -eq 0 ]
-  local cmd
   cmd=$(settings_get 'this.hooks.UserPromptSubmit[0].hooks[0].command')
   [[ "$cmd" == *"tab-status --hook engage"* ]]
 }
 
 # ── Permissions merge ──────────────────────────────────────────────────────────
-
-@test "permissions: allow.sup entries are merged" {
-  run_installer
-  [ "$status" -eq 0 ]
-  local allows
-  allows=$(settings_get 'this.permissions.allow')
-  # Edit(), not Write() - Claude Code warns that Write() rules gate nothing,
-  # so 13e56e7 dropped them from allow.sup as pure duplicates.
-  [[ "$allows" == *"Edit(.claude/tmp/*)"* ]] || false
-  [[ "$allows" == *"Edit(tmp/*)"* ]]
-}
 
 @test "permissions: existing allow rules are preserved" {
   cat > "$CLAUDE_DIR/settings.json" <<'EOF'
@@ -304,18 +266,13 @@ EOF
   [ "$(readlink "$AGENT_SKILLS_DIR/simplify")" = "$BATS_TEST_DIRNAME/skills/simplify" ]
 }
 
-@test "skills: directory-based skills are symlinked" {
+@test "skills: directory-based skills link to repo source" {
   run_installer
   [ "$status" -eq 0 ]
-  # Check that at least one skill directory was installed
   local count
   count=$(find "$CLAUDE_DIR/skills" -maxdepth 1 -type l -not -name ".*" | wc -l | tr -d ' ')
   [ "$count" -gt 0 ]
-}
 
-@test "skills: symlinks point to repo source" {
-  run_installer
-  [ "$status" -eq 0 ]
   for link in "$CLAUDE_DIR/skills"/*/; do
     if [ -L "${link%/}" ]; then
       local target
@@ -363,17 +320,13 @@ EOF
 
 # ── Symlinks: agents ──────────────────────────────────────────────────────────
 
-@test "agents: .md files are symlinked" {
+@test "agents: .md files link to repo source" {
   run_installer
   [ "$status" -eq 0 ]
   local count
   count=$(find "$CLAUDE_DIR/agents" -maxdepth 1 -name "*.md" -type l | wc -l | tr -d ' ')
   [ "$count" -gt 0 ]
-}
 
-@test "agents: symlinks point to repo source" {
-  run_installer
-  [ "$status" -eq 0 ]
   for link in "$CLAUDE_DIR/agents"/*.md; do
     if [ -L "$link" ]; then
       local target
@@ -426,10 +379,12 @@ EOF
 
 # ── OpenCode agents ──────────────────────────────────────────────────────────
 
-@test "opencode agents: not installed unless opencode config dir exists" {
+@test "optional harnesses: absent config directories are not created" {
   run_installer
   [ "$status" -eq 0 ]
   [ ! -e "$OPENCODE_CONFIG_DIR" ]
+  [ ! -d "$PI_CODING_AGENT_DIR" ]
+  [ ! -e "$AGENT_RIG_MCP_SHARED_CONFIG" ]
 }
 
 @test "opencode agents: installed in opencode format when config dir exists" {
@@ -503,37 +458,16 @@ EOF
 # (goal-compose's /goal, the lemma-* skills' lemmalog_* MCP tools) and would
 # be dead weight or actively misleading inside pi.
 
-@test "pi: skills are not installed when pi is not set up on this machine" {
-  run_installer
-  [ "$status" -eq 0 ]
-  [ ! -d "$PI_CODING_AGENT_DIR" ]
-}
-
-@test "pi: harness-agnostic skills are symlinked into pi's skills dir" {
+@test "pi: allowlisted skills link to repo source, Claude-only skills stay out" {
   mkdir -p "$PI_CODING_AGENT_DIR"
   run_installer
   [ "$status" -eq 0 ]
-  [ -L "$PI_CODING_AGENT_DIR/skills/dialogue" ]
-  local target
-  target=$(readlink "$PI_CODING_AGENT_DIR/skills/dialogue")
-  [[ "$target" == "$BATS_TEST_DIRNAME/skills/dialogue" ]] || false
-  # simplify is pure code-style guidance - no tool names, no harness concepts.
-  [ -L "$PI_CODING_AGENT_DIR/skills/simplify" ]
-}
-
-@test "pi: consult is symlinked with its harness-aware instructions" {
-  mkdir -p "$PI_CODING_AGENT_DIR"
-  run_installer
-  [ "$status" -eq 0 ]
-  [ -L "$PI_CODING_AGENT_DIR/skills/consult" ]
-  [ "$(readlink "$PI_CODING_AGENT_DIR/skills/consult")" = "$BATS_TEST_DIRNAME/skills/consult" ]
-  [ -f "$PI_CODING_AGENT_DIR/skills/consult/SKILL.md" ]
-}
-
-@test "pi: Claude-only skills are not symlinked into pi" {
-  mkdir -p "$PI_CODING_AGENT_DIR"
-  run_installer
-  [ "$status" -eq 0 ]
+  local skill
+  for skill in dialogue simplify consult; do
+    [ -L "$PI_CODING_AGENT_DIR/skills/$skill" ]
+    [ "$(readlink "$PI_CODING_AGENT_DIR/skills/$skill")" = "$BATS_TEST_DIRNAME/skills/$skill" ]
+    [ -f "$PI_CODING_AGENT_DIR/skills/$skill/SKILL.md" ]
+  done
   [ ! -e "$PI_CODING_AGENT_DIR/skills/goal-compose" ]
   [ ! -e "$PI_CODING_AGENT_DIR/skills/lemma-drain" ]
 }
@@ -679,12 +613,6 @@ OLD_CHECKOUT() { echo "$TEST_DIR/old/claude-rig"; }
 # env values but takes `command` literally, so a server whose command is a
 # per-machine build path (lemmalog) cannot be expressed portably and stays out.
 
-@test "mcp: the shared config is not created when pi is not set up" {
-  run_installer
-  [ "$status" -eq 0 ]
-  [ ! -e "$AGENT_RIG_MCP_SHARED_CONFIG" ]
-}
-
 @test "mcp: the shared config is symlinked to the repo's copy" {
   mkdir -p "$PI_CODING_AGENT_DIR"
   run_installer
@@ -721,40 +649,14 @@ OLD_CHECKOUT() { echo "$TEST_DIR/old/claude-rig"; }
 
 # ── Symlinks: bin commands ──────────────────────────────────────────────────
 
-@test "bin: claude-tabs is symlinked from bin/" {
+@test "bin: commands link to their repo sources" {
   run_installer
   [ "$status" -eq 0 ]
-  [ -L "$LOCAL_BIN/claude-tabs" ]
-  local target
-  target=$(readlink "$LOCAL_BIN/claude-tabs")
-  [[ "$target" == "$BATS_TEST_DIRNAME/bin/claude-tabs" ]]
-}
-
-@test "bin: ticket-sort is symlinked from bin/" {
-  run_installer
-  [ "$status" -eq 0 ]
-  [ -L "$LOCAL_BIN/ticket-sort" ]
-  local target
-  target=$(readlink "$LOCAL_BIN/ticket-sort")
-  [[ "$target" == "$BATS_TEST_DIRNAME/bin/ticket-sort" ]]
-}
-
-@test "bin: pi-sync is symlinked from bin/" {
-  run_installer
-  [ "$status" -eq 0 ]
-  [ -L "$LOCAL_BIN/pi-sync" ]
-  local target
-  target=$(readlink "$LOCAL_BIN/pi-sync")
-  [[ "$target" == "$BATS_TEST_DIRNAME/bin/pi-sync" ]]
-}
-
-@test "bin: claude-src is symlinked from bin/" {
-  run_installer
-  [ "$status" -eq 0 ]
-  [ -L "$LOCAL_BIN/claude-src" ]
-  local target
-  target=$(readlink "$LOCAL_BIN/claude-src")
-  [[ "$target" == "$BATS_TEST_DIRNAME/bin/claude-src" ]]
+  local source
+  for source in bin/claude-tabs bin/ticket-sort bin/pi-sync bin/claude-src bin/wt-new bin/wt tab-status/tab-status; do
+    [ -L "$LOCAL_BIN/${source##*/}" ]
+    [ "$(readlink "$LOCAL_BIN/${source##*/}")" = "$BATS_TEST_DIRNAME/$source" ]
+  done
 }
 
 # pr-tend (now sheepdog) moved to its own repo (2026-10-13); these links went with it.
@@ -795,33 +697,6 @@ OLD_CHECKOUT() { echo "$TEST_DIR/old/claude-rig"; }
   [ ! -e "$LOCAL_BIN/harvest.sh" ]
   [ ! -e "$LOCAL_BIN/ticket-sort.bats" ]
   [ ! -e "$LOCAL_BIN/wt-new.bats" ]
-}
-
-@test "bin: wt-new is symlinked from bin/" {
-  run_installer
-  [ "$status" -eq 0 ]
-  [ -L "$LOCAL_BIN/wt-new" ]
-  local target
-  target=$(readlink "$LOCAL_BIN/wt-new")
-  [[ "$target" == "$BATS_TEST_DIRNAME/bin/wt-new" ]]
-}
-
-@test "bin: wt is symlinked from bin/" {
-  run_installer
-  [ "$status" -eq 0 ]
-  [ -L "$LOCAL_BIN/wt" ]
-  local target
-  target=$(readlink "$LOCAL_BIN/wt")
-  [[ "$target" == "$BATS_TEST_DIRNAME/bin/wt" ]]
-}
-
-@test "bin: tab-status is symlinked from tab-status/" {
-  run_installer
-  [ "$status" -eq 0 ]
-  [ -L "$LOCAL_BIN/tab-status" ]
-  local target
-  target=$(readlink "$LOCAL_BIN/tab-status")
-  [[ "$target" == "$BATS_TEST_DIRNAME/tab-status/tab-status" ]]
 }
 
 @test "bin: a stale tab-status symlink (e.g. to another repo) is replaced" {
@@ -1051,15 +926,6 @@ EOF
 
 # ── Sandbox allowWrite merge ──────────────────────────────────────────────────
 
-@test "sandbox: allowWrite paths are merged" {
-  run_installer
-  [ "$status" -eq 0 ]
-  local paths
-  paths=$(settings_get 'join(this.sandbox.filesystem.allowWrite, ",")')
-  [[ "$paths" == *"~/.claude/logs"* ]] || false
-  [[ "$paths" == *"~/.claude/contexts"* ]]
-}
-
 @test "sandbox: existing allowWrite paths are preserved" {
   cat > "$CLAUDE_DIR/settings.json" <<'EOF'
 {
@@ -1089,12 +955,6 @@ EOF
 }
 
 # ── Env vars ──────────────────────────────────────────────────────────────────
-
-@test "env: fresh install does not set CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" {
-  run_installer
-  [ "$status" -eq 0 ]
-  ! grep -q 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE' "$CLAUDE_DIR/settings.json"
-}
 
 # Removed, not merely left unmanaged: the var still changes when Claude Code
 # auto-compacts, so a value left behind in settings.json would go on acting on
