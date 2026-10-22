@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env bash5
 #
 # wt - Fuzzy-select a git worktree and print its path.
 #
@@ -10,7 +10,10 @@
 #
 # Usage: wt
 #
-# Requires: fzf, super (SuperDB).
+# Ordered by newest Claude, pi, or Codex transcript mtime; no-session ties
+# retain git's order. No visit tracking or persisted state.
+#
+# Requires: fzf, super (SuperDB), python3.
 #
 # stdout is EXACTLY the selected path, or nothing when the selection is
 # cancelled. Errors go to stderr.
@@ -20,6 +23,7 @@ set -euo pipefail
 # The porcelain parse below is written against this version's grok/aggregate
 # behavior; pin it rather than inherit whatever asdf resolves today.
 export ASDF_SUPERDB_VERSION=0.51231
+WT_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 
 # Seam for tests: the raw `git worktree list --porcelain` output.
 wt_worktree_porcelain() {
@@ -66,10 +70,18 @@ wt_display_lines() {
   super -f line -c "values f'{dir}\t{leaf} [{branch}]'" -
 }
 
+wt_sort_recent() {
+  python3 -c '
+import pathlib, runpy, sys
+helper = pathlib.Path(sys.argv[1]).resolve().with_name("wt-recency.py")
+runpy.run_path(str(helper), run_name="__main__")
+' "$WT_SCRIPT"
+}
+
 # Seam for tests: the interactive picker. Reads display lines, writes the
 # chosen one. fzf draws on /dev/tty, so this stays usable with stdout captured.
 wt_select() {
-  fzf --height=40% --reverse --delimiter=$'\t' --with-nth='2..'
+  fzf --height=40% --reverse --no-sort --delimiter=$'\t' --with-nth='2..'
 }
 
 wt_main() {
@@ -86,7 +98,7 @@ wt_main() {
     return 1
   fi
 
-  lines=$(printf '%s\n' "$json" | wt_display_lines)
+  lines=$(printf '%s\n' "$json" | wt_display_lines | wt_sort_recent)
 
   # fzf exits 130 on ESC/Ctrl-C and 1 when nothing matched. Neither is an
   # error: the user chose not to go anywhere. Anything else is a real failure.

@@ -18,6 +18,9 @@ WT="$BATS_TEST_DIRNAME/wt"
 
 setup() {
   TMP="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
+  export CLAUDE_PROJECTS_DIR="$TMP/claude"
+  export AGENT_READ_PI_DIR="$TMP/pi"
+  export AGENT_READ_CODEX_DIR="$TMP/codex"
   source "$WT"
 }
 
@@ -119,6 +122,97 @@ EOF
   [[ "$(printf '%s\n' "$output" | sed -n 1p)" == $'/x/r\tr [main]' ]] || false
   [[ "$(printf '%s\n' "$output" | sed -n 2p)" == $'/x/d\td [(detached)]' ]] || false
   [[ "$(printf '%s\n' "$output" | sed -n 3p)" == $'/x/b\tb [feat]' ]]
+}
+
+# ── Transcript recency ───────────────────────────────────────────────────────
+
+session_file() {
+  local source="$1" dir="$2" name="$3" stamp="$4" encoded file
+  case "$source" in
+    claude)
+      encoded=$(printf '%s' "$dir" | sed 's/[^a-zA-Z0-9]/-/g')
+      file="$CLAUDE_PROJECTS_DIR/$encoded/$name.jsonl" ;;
+    pi)
+      encoded="${dir#/}"
+      file="$AGENT_READ_PI_DIR/--${encoded//\//-}--/$name.jsonl" ;;
+  esac
+  mkdir -p "${file%/*}"
+  printf 'transcript need not be parsed\n' > "$file"
+  touch -t "$stamp" "$file"
+}
+
+@test "default picker sorts by newest Claude or pi transcript, not session creation" {
+  mkdir -p "$TMP/old" "$TMP/recent"
+  session_file claude "$TMP/old" newer-name 202201010000
+  session_file pi "$TMP/recent" old-name 202001010000
+  session_file pi "$TMP/recent" oldest-name 202301010000
+  wt_worktree_porcelain() {
+    printf 'worktree %s\nbranch refs/heads/old\n\nworktree %s\nbranch refs/heads/recent\n' "$TMP/old" "$TMP/recent"
+  }
+  wt_select() { head -1; }
+  run --separate-stderr wt_main
+  [ "$status" -eq 0 ]
+  [ "$output" = "$TMP/recent" ]
+}
+
+@test "session directory encodings handle spaces punctuation and underscores" {
+  local dir="$TMP/my project_name.v2"
+  session_file claude "$dir" session 202201010000
+  run wt_sort_recent <<< "$(printf '/x/none\tnone\n%s\tchosen\n' "$dir")"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "$dir"$'\t'"chosen" ]
+  session_file pi "$dir" session 202301010000
+  run wt_sort_recent <<< "$(printf '/x/none\tnone\n%s\tchosen\n' "$dir")"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "$dir"$'\t'"chosen" ]
+}
+
+codex_file() {
+  local name="$1" cwd="$2" source="$3" stamp="$4"
+  mkdir -p "$AGENT_READ_CODEX_DIR/2026/10/22"
+  local file="$AGENT_READ_CODEX_DIR/2026/10/22/$name.jsonl"
+  printf '{"type":"session_meta","payload":{"cwd":"%s","source":%s}}\nnot json transcript\n' "$cwd" "$source" > "$file"
+  touch -t "$stamp" "$file"
+}
+
+@test "Codex reads cwd from header and ignores malformed and subagent sessions" {
+  session_file claude /x/claude session 202201010000
+  codex_file valid /x/codex '"cli"' 202301010000
+  codex_file child /x/subagent '{"subagent":{"thread_spawn":{}}}' 202401010000
+  printf 'bad json\n' > "$AGENT_READ_CODEX_DIR/2026/10/22/broken.jsonl"
+  run wt_sort_recent <<< $'/x/subagent\tsubagent\n/x/claude\tclaude\n/x/codex\tcodex'
+  [ "$status" -eq 0 ]
+  [ "$output" = $'/x/codex\tcodex\n/x/claude\tclaude\n/x/subagent\tsubagent' ]
+}
+
+@test "equal timestamps and missing sessions preserve input order" {
+  session_file claude /x/z session 202201010000
+  session_file pi /x/a session 202201010000
+  run wt_sort_recent <<< $'/x/missing-z\tmissing-z\n/x/z\tz\n/x/missing-a\tmissing-a\n/x/a\ta'
+  [ "$status" -eq 0 ]
+  [ "$output" = $'/x/z\tz\n/x/a\ta\n/x/missing-z\tmissing-z\n/x/missing-a\tmissing-a' ]
+}
+
+@test "executed wt resolves its helper through an installed symlink" {
+  git init -q "$TMP/repo"
+  git -C "$TMP/repo" -c user.name=Test -c user.email=test@example.com commit -qm initial --allow-empty
+  git -C "$TMP/repo" worktree add -qb recent "$TMP/recent"
+  session_file pi "$TMP/recent" session 202301010000
+  mkdir -p "$TMP/fakebin"
+  printf '#!/bin/sh\nhead -1\n' > "$TMP/fakebin/fzf"
+  chmod +x "$TMP/fakebin/fzf"
+  ln -s "$WT" "$TMP/fakebin/wt"
+  cd "$TMP/repo"
+  run --separate-stderr env PATH="$TMP/fakebin:$PATH" "$TMP/fakebin/wt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$TMP/recent" ]
+}
+
+@test "fzf filters without reordering the recency-sorted input" {
+  fzf() { printf '%s\n' "$@"; }
+  run wt_select
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--no-sort"* ]]
 }
 
 # ── wt_main ──────────────────────────────────────────────────────────────────
