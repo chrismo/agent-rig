@@ -35,8 +35,7 @@ gt_title_leaf() {
   printf '%s\n' "$title"
 }
 
-# Passthrough filter over the AppleScript dump: keep "id<TAB>title" lines,
-# drop blanks. Kept as a seam so fzf input is defined in one place.
+# Keep "id<TAB>tab title<TAB>window name" rows, dropping blanks. Kept as a seam so fzf input is defined in one place.
 # `|| true`: grep exits 1 when nothing matches (all-blank/empty input). That
 # empty case is expected and handled by the caller's `[[ -z "$dump" ]]` check,
 # so it must not propagate as a pipeline failure under set -e/pipefail.
@@ -75,7 +74,7 @@ tell application id "com.mitchellh.ghostty"
   set out to ""
   repeat with w in windows
     repeat with t in tabs of w
-      set out to out & (id of t) & (ASCII character 9) & (name of t) & linefeed
+      set out to out & (id of t) & (ASCII character 9) & (name of t) & (ASCII character 9) & (name of w) & linefeed
     end repeat
   end repeat
   return out
@@ -124,7 +123,7 @@ gt_main() {
     printf '%s\n' "$dump" | fzf \
       --height=40% --reverse \
       --with-nth=2.. --delimiter='\t' \
-      --preview "'$0' --preview {2..}" --preview-window=right,50%,wrap
+      --preview "'$0' --preview {2}" --preview-window=right,50%,wrap
   )" || {
     rc=$?
     # 130 = user aborted (Esc/Ctrl-C), 1 = no match: both clean exits.

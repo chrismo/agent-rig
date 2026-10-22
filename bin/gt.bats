@@ -74,7 +74,7 @@ setup() {
   [[ -z "$output" ]]
 }
 
-@test "gt_dump_tabs uses native tabs without Accessibility or window-name prefixes" {
+@test "gt_dump_tabs includes native window names in a separate field" {
   osascript() {
     local script
     script="$(</dev/stdin)"
@@ -83,13 +83,13 @@ setup() {
     [[ "$script" == *'id of t'* ]] || return 1
     [[ "$script" == *'name of t'* ]] || return 1
     [[ "$script" != *'System Events'* ]] || return 1
-    [[ "$script" != *'name of w'* ]] || return 1
-    [[ "$script" == *'ASCII character 9'* ]] || return 1
-    printf 'tab-123\t🔵 agent-rig (main)\n'
+    [[ "$script" == *'name of w'* ]] || return 1
+    [[ "$script" == *'(name of t) & (ASCII character 9) & (name of w)'* ]] || return 1
+    printf 'tab-123\t🔵 agent-rig (main)\tWork-Rig\n'
   }
   run gt_dump_tabs
   [ "$status" -eq 0 ]
-  [ "$output" = $'tab-123\t🔵 agent-rig (main)' ]
+  [ "$output" = $'tab-123\t🔵 agent-rig (main)\tWork-Rig' ]
 }
 
 @test "gt_select_tab locates a stable ID across windows and selects it" {
@@ -114,6 +114,20 @@ setup() {
   run gt_main
   [ "$status" -eq 0 ]
   [ "$output" = selected:tab-456 ]
+}
+
+@test "gt_main displays searchable window names but previews only the tab title" {
+  gt_dump_tabs() { printf 'tab-123\tagent-rig (main)\tWork-Rig\n'; }
+  fzf() {
+    local args="$*"
+    [[ "$args" == *'--with-nth=2..'* ]] || return 9
+    [[ "$args" == *"--preview '$0' --preview {2}"* ]] || return 9
+    command cat
+  }
+  gt_select_tab() { printf 'selected:%s\n' "$1"; }
+  run gt_main
+  [ "$status" -eq 0 ]
+  [ "$output" = selected:tab-123 ]
 }
 
 @test "gt_main preserves AppleScript errors instead of reporting no tabs" {
