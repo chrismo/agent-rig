@@ -503,14 +503,14 @@ list_sessions() {
     local any=0 f sid mtime turns
     while IFS= read -r f; do
       if [[ $any -eq 0 ]]; then
-        printf '%-19s  %-36s  %-5s  %s\n' 'modified' 'sessionId' 'lines' 'name'
+        printf '%-19s  %-8s  %-36s  %-5s  %s\n' 'modified' 'harness' 'sessionId' 'lines' 'name'
       fi
       any=1
       sid="$(codex_sid_for "$f")"
       mtime=$(stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S' "$f")
       turns=$(wc -l < "$f" | tr -d ' ')
       # No name column: Codex records no /rename equivalent.
-      printf '%-19s  %-36s  %-5s  %s\n' "$mtime" "$sid" "$turns" ""
+      printf '%-19s  %-8s  %-36s  %-5s  %s\n' "$mtime" 'codex' "$sid" "$turns" ""
     done < <(codex_filtered_files "$cwd")
     if [[ $any -eq 0 ]]; then
       echo "agent-read: no matching Codex sessions for $cwd" >&2
@@ -529,14 +529,14 @@ list_sessions() {
     local any=0 f sid mtime turns
     while IFS= read -r f; do
       if [[ $any -eq 0 ]]; then
-        printf '%-19s  %-36s  %-5s  %s\n' 'modified' 'sessionId' 'turns' 'name'
+        printf '%-19s  %-8s  %-36s  %-5s  %s\n' 'modified' 'harness' 'sessionId' 'turns' 'name'
       fi
       any=1
       sid="$(pi_sid_for "$f")"
       mtime=$(stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S' "$f")
       turns=$(wc -l < "$f" | tr -d ' ')
       # No name column: pi records no /rename equivalent.
-      printf '%-19s  %-36s  %-5s  %s\n' "$mtime" "$sid" "$turns" ""
+      printf '%-19s  %-8s  %-36s  %-5s  %s\n' "$mtime" 'pi' "$sid" "$turns" ""
     done < <(pi_filtered_files "$pdir")
     if [[ $any -eq 0 ]]; then
       echo "agent-read: no matching pi sessions in $pdir" >&2
@@ -563,7 +563,7 @@ list_sessions() {
   local any=0
   while IFS= read -r f; do
     if [[ $any -eq 0 ]]; then
-      printf '%-19s  %-36s  %-5s  %s\n' 'modified' 'sessionId' 'turns' 'name'
+      printf '%-19s  %-8s  %-36s  %-5s  %s\n' 'modified' 'harness' 'sessionId' 'turns' 'name'
     fi
     any=1
     local sid mtime turns name
@@ -572,7 +572,7 @@ list_sessions() {
     mtime=$(stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S' "$f")
     turns=$(wc -l < "$f" | tr -d ' ')
     name=$(session_name_for "$sid")
-    printf '%-19s  %-36s  %-5s  %s\n' "$mtime" "$sid" "$turns" "$name"
+    printf '%-19s  %-8s  %-36s  %-5s  %s\n' "$mtime" 'claude' "$sid" "$turns" "$name"
   done < <(filtered_sessions_in "$dir")
   if [[ $any -eq 0 ]]; then
     echo "agent-read: no matching sessions in $dir" >&2

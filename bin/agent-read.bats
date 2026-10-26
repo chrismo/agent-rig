@@ -231,6 +231,8 @@ EOF
   run "$POD" --all "$wt"
   [ "$status" -eq 0 ]
   [[ "$output" == *"modified"* ]] || false
+  [[ "$output" == *"harness"* ]] || false
+  [[ "$output" == *"claude"* ]] || false
   [[ "$output" == *"11111111"* ]]
 }
 
@@ -912,6 +914,8 @@ write_codex_subagent() {
   write_codex_session "$wt" "aaaaaaaa-1111-2222-3333-444444444444" >/dev/null
   run "$POD" --codex --all "$wt"
   [ "$status" -eq 0 ]
+  [[ "$output" == *"harness"* ]] || false
+  [[ "$output" == *"codex"* ]] || false
   [[ "$output" == *"aaaaaaaa-1111-2222-3333-444444444444"* ]]
 }
 
@@ -1056,9 +1060,11 @@ write_codex_subagent() {
   xf="$AGENT_READ_CODEX_DIR/2026/07/15/rollout-2026-07-15T10-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl"
   touch -t 202001010000 "$cf"
   touch "$xf"
-  run --separate-stderr "$POD" "$wt"
+  run --separate-stderr "$POD" --all "$wt"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"codex is fresher"* ]] || false
+  [[ "$output" == *"harness"* ]] || false
+  [[ "$output" == *"codex"* ]] || false
+  [[ "$output" == *"aaaaaaaa-1111-2222-3333-444444444444"* ]] || false
   [[ "$stderr" == *"--claude"* ]]
 }
 
@@ -1174,6 +1180,8 @@ write_pi_session() {
   write_pi_session "$wt" "01a08278-fc36-778e-8e2e-72bdb768aad2" >/dev/null
   run "$POD" --pi --all "$wt"
   [ "$status" -eq 0 ]
+  [[ "$output" == *"harness"* ]] || false
+  [[ "$output" == *"pi"* ]] || false
   [[ "$output" == *"01a08278-fc36-778e-8e2e-72bdb768aad2"* ]] || false
 }
 
