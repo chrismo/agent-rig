@@ -7,6 +7,22 @@ function tokens(n: number) {
   return n < 1000 ? `${n}` : n < 10000 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n / 1000)}k`;
 }
 
+type Rgb = [number, number, number];
+const GREEN: Rgb = [80, 180, 80];
+const YELLOW: Rgb = [200, 170, 60];
+const RED: Rgb = [210, 70, 70];
+
+function lerp(from: Rgb, to: Rgb, step: number): Rgb {
+  return from.map((c, i) => Math.trunc(c + (to[i] - c) * step / 50_000)) as Rgb;
+}
+
+// Same gradient as statusline/plugins.d/2.10-context.
+function contextColor(tokens: number): Rgb {
+  if (tokens <= 100_000) return GREEN;
+  if (tokens >= 200_000) return RED;
+  return tokens <= 150_000 ? lerp(GREEN, YELLOW, tokens - 100_000) : lerp(YELLOW, RED, tokens - 150_000);
+}
+
 export default function (pi: ExtensionAPI) {
   let timer: ReturnType<typeof setInterval> | undefined;
   let hud = "";
@@ -64,20 +80,23 @@ export default function (pi: ExtensionAPI) {
               cost += usage.cost.total;
             }
           }
-          const usage = ctx.getContextUsage();
-          const percent = usage?.percent == null ? "?" : `${usage.percent.toFixed(1)}%`;
-          const window = usage?.contextWindow ?? ctx.model?.contextWindow ?? 0;
+          const contextTokens = ctx.getContextUsage()?.tokens ?? null;
+          const contextText = contextTokens === null ? "ctx: ?" : `ctx: ${Math.round(contextTokens / 1000)}k`;
           const stats = [
             input && `↑${tokens(input)}`, output && `↓${tokens(output)}`,
             cacheRead && `R${tokens(cacheRead)}`, cacheWrite && `W${tokens(cacheWrite)}`,
-            cost && `$${cost.toFixed(3)}`, `${percent}/${tokens(window)}`,
+            cost && `$${cost.toFixed(3)}`,
           ].filter(Boolean).join(" ");
+          const statsPrefix = stats && `${stats} `;
+          const contextStyled = contextTokens === null
+            ? theme.fg("dim", contextText)
+            : `\x1b[38;2;${contextColor(contextTokens).join(";")}m${contextText}\x1b[39m`;
           const model = ctx.model?.id ?? "no-model";
           const right = ctx.model?.reasoning ? `${model} • ${ctx.thinkingLevel ?? "off"}` : model;
-          const gap = " ".repeat(Math.max(2, width - visibleWidth(stats) - visibleWidth(right)));
+          const gap = " ".repeat(Math.max(2, width - visibleWidth(statsPrefix + contextText) - visibleWidth(right)));
           const lines = [
             truncateToWidth(theme.fg("dim", location), width),
-            truncateToWidth(theme.fg("dim", stats + gap + right), width),
+            truncateToWidth(theme.fg("dim", statsPrefix) + contextStyled + theme.fg("dim", gap + right), width),
           ];
           const statuses = [...data.getExtensionStatuses().entries()]
             .sort(([a], [b]) => a.localeCompare(b))

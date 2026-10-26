@@ -101,3 +101,50 @@ test('turn end refreshes both entries', async () => {
   assert.equal(calls.filter(([cmd]) => cmd === 'hud').length, 2);
   assert.equal(calls.filter(([cmd]) => cmd === 'gh').length, 2);
 });
+
+const ESC = '\x1b';
+const strip = (text) => text.replace(/\x1b\[[0-9;]*m/g, '');
+const fg = (r, g, b) => `${ESC}[38;2;${r};${g};${b}m`;
+
+async function statsLine(tokens, contextWindow = 1_000_000) {
+  const { handlers, ctx, render } = setup();
+  ctx.getContextUsage = () => ({ tokens, contextWindow, percent: tokens === null ? null : tokens / contextWindow * 100 });
+  await handlers.get('session_start')({}, ctx);
+  return render()[1];
+}
+
+test('context shows k tokens, not a percentage', async () => {
+  const line = await statsLine(77_227);
+  assert.match(strip(line), /ctx: 77k/);
+  assert.doesNotMatch(strip(line), /%/);
+});
+
+test('context is green up to 100k, yellow at 150k, red from 200k', async () => {
+  assert.ok((await statsLine(100_000)).includes(`${fg(80, 180, 80)}ctx: 100k`));
+  assert.ok((await statsLine(150_000)).includes(`${fg(200, 170, 60)}ctx: 150k`));
+  assert.ok((await statsLine(200_000)).includes(`${fg(210, 70, 70)}ctx: 200k`));
+  assert.ok((await statsLine(640_000)).includes(`${fg(210, 70, 70)}ctx: 640k`));
+});
+
+test('context color is interpolated between the stops', async () => {
+  assert.ok((await statsLine(125_000)).includes(`${fg(140, 175, 70)}ctx: 125k`));
+  assert.ok((await statsLine(175_000)).includes(`${fg(205, 120, 65)}ctx: 175k`));
+});
+
+test('color ignores window size', async () => {
+  assert.ok((await statsLine(200_000, 200_000)).includes(`${fg(210, 70, 70)}ctx: 200k`));
+});
+
+test('unknown tokens right after compaction show ctx: ?', async () => {
+  assert.match(strip(await statsLine(null)), /ctx: \?/);
+});
+
+test('model stays right-aligned and the line stays within width', async () => {
+  const { handlers, ctx, render } = setup();
+  ctx.getContextUsage = () => ({ tokens: 150_000, contextWindow: 1_000_000, percent: 15 });
+  await handlers.get('session_start')({}, ctx);
+  const line = render(100)[1];
+  assert.equal(visibleWidth(line), 100);
+  assert.ok(strip(line).endsWith('test-model'));
+  assert.ok(render(12).every((l) => visibleWidth(l) <= 12));
+});
