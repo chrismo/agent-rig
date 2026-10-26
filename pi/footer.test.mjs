@@ -148,3 +148,15 @@ test('model stays right-aligned and the line stays within width', async () => {
   assert.ok(strip(line).endsWith('test-model'));
   assert.ok(render(12).every((l) => visibleWidth(l) <= 12));
 });
+
+test('context leads the stats line, before token counts and cost', async () => {
+  const { handlers, ctx, render } = setup();
+  ctx.getContextUsage = () => ({ tokens: 77_227, contextWindow: 1_000_000, percent: 7.7 });
+  ctx.sessionManager.getEntries = () => [{ type: 'message', message: { role: 'assistant',
+    usage: { input: 9200, output: 74, cacheRead: 0, cacheWrite: 0, cost: { total: 0.001 } } } }];
+  await handlers.get('session_start')({}, ctx);
+  const line = render(100)[1];
+  assert.ok(line.startsWith(`${fg(80, 180, 80)}ctx: 77k`));
+  assert.match(strip(line), /^ctx: 77k +↑9\.2k ↓74 \$0\.001 +test-model$/);
+  assert.equal(visibleWidth(line), 100);
+});

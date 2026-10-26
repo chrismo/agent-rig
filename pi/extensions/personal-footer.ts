@@ -87,16 +87,16 @@ export default function (pi: ExtensionAPI) {
             cacheRead && `R${tokens(cacheRead)}`, cacheWrite && `W${tokens(cacheWrite)}`,
             cost && `$${cost.toFixed(3)}`,
           ].filter(Boolean).join(" ");
-          const statsPrefix = stats && `${stats} `;
+          const statsSuffix = stats && `  ${stats}`;
           const contextStyled = contextTokens === null
             ? theme.fg("dim", contextText)
             : `\x1b[38;2;${contextColor(contextTokens).join(";")}m${contextText}\x1b[39m`;
           const model = ctx.model?.id ?? "no-model";
           const right = ctx.model?.reasoning ? `${model} • ${ctx.thinkingLevel ?? "off"}` : model;
-          const gap = " ".repeat(Math.max(2, width - visibleWidth(statsPrefix + contextText) - visibleWidth(right)));
+          const gap = " ".repeat(Math.max(2, width - visibleWidth(contextText + statsSuffix) - visibleWidth(right)));
           const lines = [
             truncateToWidth(theme.fg("dim", location), width),
-            truncateToWidth(theme.fg("dim", statsPrefix) + contextStyled + theme.fg("dim", gap + right), width),
+            truncateToWidth(contextStyled + theme.fg("dim", statsSuffix + gap + right), width),
           ];
           const statuses = [...data.getExtensionStatuses().entries()]
             .sort(([a], [b]) => a.localeCompare(b))
