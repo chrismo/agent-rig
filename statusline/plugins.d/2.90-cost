@@ -1,0 +1,7 @@
+#!/bin/bash
+# Segment: session cost
+input="${CLAUDE_STATUS_INPUT:-/tmp/claude-status-input.json}"
+
+cost_usd=$(super -f line -c 'coalesce(cost.total_cost_usd, 0)' "$input")
+
+printf "\$%.2f" "$cost_usd"

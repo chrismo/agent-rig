@@ -61,9 +61,9 @@ skill through its `~/.claude/skills/` link.
 
 ### `statusline/`
 
-A two-line statusline for Claude Code, powered by [SuperDB](https://superdb.org) (`super` CLI):
+A three-line statusline for Claude Code, powered by [SuperDB](https://superdb.org) (`super` CLI):
 
-Both lines are plugin-driven — assembled from executable scripts in `statusline/plugins.d/`. Filename format is `<line>.<order>-<name>` (e.g. `1.10-project`, `2.50-cost`): the part before the dot selects the line, the part after controls ordering within it.
+All lines are plugin-driven — assembled from executable scripts in `statusline/plugins.d/`. Filename format is `<line>.<order>-<name>` (e.g. `1.10-project`, `2.90-cost`): the part before the dot selects the line, the part after controls ordering within it.
 
 | Plugin | Segment |
 |--------|---------|
@@ -72,12 +72,11 @@ Both lines are plugin-driven — assembled from executable scripts in `statuslin
 | `1.30-dir` | relative directory |
 | `1.40-version` | Claude Code version |
 | `1.50-model` | model + effort-level bars |
-| `2.10-hud` | [`hud`](https://github.com/chrismo/hud) status bar (optional, skipped if hud not installed) |
-| `2.50-cost` | session cost + wall/API duration |
-| `2.60-lines` | lines added/removed |
-| `2.70-context` | context window usage % |
+| `2.10-context` | context window usage % |
 | `2.76-rate-limits-pacman` | 5h / 7d rate-limit usage + reset, as mood face + pac-man bars |
 | `2.77-spend` | credit spend + pace against the UTC day — a shim, see below |
+| `2.90-cost` | session cost |
+| `3.10-hud` | [`hud`](https://github.com/chrismo/hud) status bar (optional, skipped if hud not installed) |
 
 `2.77-spend` renders nothing itself. The segment
 (`38% $229/$611 | 24h [···●·◇··] 8h`) is built by
