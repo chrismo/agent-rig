@@ -72,7 +72,7 @@ All lines are plugin-driven — assembled from executable scripts in `statusline
 | `1.30-dir` | relative directory |
 | `1.40-version` | Claude Code version |
 | `1.50-model` | model + effort-level bars |
-| `2.10-context` | context window usage % |
+| `2.10-context` | context size in k tokens, green → yellow → red between 100k and 200k |
 | `2.76-rate-limits-pacman` | 5h / 7d rate-limit usage + reset, as mood face + pac-man bars |
 | `2.77-spend` | credit spend + pace against the UTC day — a shim, see below |
 | `2.90-cost` | session cost |

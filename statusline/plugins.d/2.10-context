@@ -1,28 +1,34 @@
 #!/bin/bash
-# Segment: context window usage percentage
+# Segment: context window usage in k tokens, colored green -> yellow -> red
+# between 100k and 200k.
 input="${CLAUDE_STATUS_INPUT:-/tmp/claude-status-input.json}"
 
-muted_green="\033[2;32m"
-muted_yellow="\033[2;33m"
-muted_red="\033[2;31m"
 color_reset="\033[2;37m"
 
-percent=$(super -f line -c 'coalesce(context_window.used_percentage, 0)' "$input")
-
-# Fallback: calculate from tokens if used_percentage not available (older Claude Code)
-if [[ "$percent" == "0" || -z "$percent" ]]; then
-  input_tokens=$(super -f line -c 'coalesce(context_window.total_input_tokens, 0)' "$input")
-  output_tokens=$(super -f line -c 'coalesce(context_window.total_output_tokens, 0)' "$input")
-  window_size=$(super -f line -c 'coalesce(context_window.context_window_size, 200000)' "$input")
-  total=$((input_tokens + output_tokens))
-  percent=$((total * 100 / window_size))
+# super errors on a missing field, so a failed lookup falls through to the fallback.
+tokens=$(super -f line -c 'values context_window.current_usage.input_tokens + context_window.current_usage.cache_creation_input_tokens + context_window.current_usage.cache_read_input_tokens' "$input" 2>/dev/null)
+if [[ -z "$tokens" || "$tokens" == "0" ]]; then
+  window_size=$(super -f line -c 'values context_window.context_window_size' "$input" 2>/dev/null)
+  percent=$(super -f line -c 'values context_window.used_percentage' "$input" 2>/dev/null)
+  percent=${percent:-0}
+  tokens=$(( ${window_size:-0} * ${percent%.*} / 100 ))
 fi
 
-color="$muted_green"
-if [[ $percent -ge 90 ]]; then
-  color="$muted_red"
-elif [[ $percent -ge 80 ]]; then
-  color="$muted_yellow"
+lerp() { echo $(( $1 + ($2 - $1) * $3 / $4 )); }
+
+GREEN=(80 180 80)
+YELLOW=(200 170 60)
+RED=(210 70 70)
+
+if   [[ $tokens -le 100000 ]]; then rgb=("${GREEN[@]}")
+elif [[ $tokens -ge 200000 ]]; then rgb=("${RED[@]}")
+else
+  if [[ $tokens -le 150000 ]]; then from=("${GREEN[@]}"); to=("${YELLOW[@]}"); step=$((tokens - 100000))
+  else                              from=("${YELLOW[@]}"); to=("${RED[@]}");    step=$((tokens - 150000))
+  fi
+  rgb=()
+  for i in 0 1 2; do rgb+=("$(lerp "${from[i]}" "${to[i]}" "$step" 50000)"); done
 fi
 
-echo -e "${color}ctx: ${percent}%${color_reset}"
+# 22 clears the faint that the previous segment's reset leaves on.
+printf '\033[22;38;2;%d;%d;%dmctx: %dk%b\n' "${rgb[0]}" "${rgb[1]}" "${rgb[2]}" $(( (tokens + 500) / 1000 )) "$color_reset"
