@@ -149,7 +149,7 @@ See `tab-status/tab-status.md` for detailed flow diagrams.
 
 ### `terminal/`
 
-Terminal configs: `ghostty/` (Ghostty/Moestty config and icon) and `rex/init.lua` (Rex keybindings, mirroring the Ghostty split and tab keys). The installer links every file under `terminal/<app>/` into `$XDG_CONFIG_HOME/<app>/` (default `~/.config/`), and `tab-status/set-title.sh` to `~/.config/ghostty/set-title.sh`. A real file already at a destination is left alone and reported. These moved here from brain's `xdg/` on 2026-10-30.
+Terminal configs: `ghostty/` (Ghostty/Moestty config and icon) and `rex/init.lua` (Rex keybindings, mirroring the Ghostty split and tab keys; notes in `terminal/REX.md`). The installer links every file under `terminal/<app>/` into `$XDG_CONFIG_HOME/<app>/` (default `~/.config/`), and `tab-status/set-title.sh` to `~/.config/ghostty/set-title.sh`. A real file already at a destination is left alone and reported. These moved here from brain's `xdg/` on 2026-10-30.
 
 ### `install/`
 
