@@ -1053,7 +1053,7 @@ write_codex_subagent() {
   [[ "$output" == *"hello"* ]]
 }
 
-@test "auto source: with both, the more recent source wins (Codex), hint points at --claude" {
+@test "--all merges Claude and Codex sessions without a source-selection hint" {
   wt=$(make_worktree awt)
   cf=$(write_session "$wt" "11111111-1111-1111-1111-111111111111")
   write_codex_session "$wt" "aaaaaaaa-1111-2222-3333-444444444444" "user:codex is fresher" >/dev/null
@@ -1065,7 +1065,8 @@ write_codex_subagent() {
   [[ "$output" == *"harness"* ]] || false
   [[ "$output" == *"codex"* ]] || false
   [[ "$output" == *"aaaaaaaa-1111-2222-3333-444444444444"* ]] || false
-  [[ "$stderr" == *"--claude"* ]]
+  [[ "$output" == *"11111111-1111-1111-1111-111111111111"* ]]
+  [[ -z "$stderr" ]]
 }
 
 @test "auto source: with both, Claude wins when it's fresher, hint points at --codex" {
@@ -1156,6 +1157,91 @@ write_pi_session() {
     done
   } > "$file"
   echo "$file"
+}
+
+@test "--all merges all three sources newest first, with one header" {
+  wt=$(make_worktree mixed)
+  cf=$(write_session "$wt" "11111111-1111-1111-1111-111111111111")
+  xf=$(write_codex_session "$wt" "aaaaaaaa-1111-2222-3333-444444444444" "user:codex mixed")
+  pf=$(write_pi_session "$wt" "bbbbbbbb-1111-2222-3333-444444444444")
+  touch -t 202001010000 "$cf"
+  touch -t 202101010000 "$xf"
+  touch -t 202201010000 "$pf"
+  run --separate-stderr "$POD" --all "$wt"
+  [ "$status" -eq 0 ]
+  [[ "${lines[1]}" == *"bbbbbbbb"* ]]
+  [[ "${lines[2]}" == *"aaaaaaaa"* ]]
+  [[ "${lines[3]}" == *"11111111-1111"* ]]
+  [ "${#lines[@]}" -eq 4 ]
+  [[ -z "$stderr" ]]
+
+  run "$POD" --claude --all "$wt"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"11111111-1111"* ]]
+  [[ "$output" != *"aaaaaaaa"* && "$output" != *"bbbbbbbb"* ]]
+}
+
+@test "--all --new renders every source with its own parser and cursor" {
+  wt=$(make_worktree mixed)
+  write_session "$wt" "11111111-1111-1111-1111-111111111111" >/dev/null
+  write_codex_session "$wt" "aaaaaaaa-1111-2222-3333-444444444444" "user:codex mixed" >/dev/null
+  write_pi_session "$wt" "bbbbbbbb-1111-2222-3333-444444444444" >/dev/null
+  run "$POD" --all --new "$wt"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"hello"* && "$output" == *"codex mixed"* && "$output" == *"hello from pi"* ]]
+  run "$POD" --all --new "$wt"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"hello"* && "$output" != *"codex mixed"* ]]
+}
+
+@test "--all includes pi even without a Claude project directory" {
+  wt=$(make_worktree mixed)
+  rmdir "$(session_dir_for "$wt")"
+  write_pi_session "$wt" "bbbbbbbb-1111-2222-3333-444444444444" >/dev/null
+  run "$POD" --all "$wt"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"bbbbbbbb"* ]]
+}
+
+@test "--all follow refuses to silently hide non-Claude sessions" {
+  wt=$(make_worktree mixed)
+  write_session "$wt" "11111111-1111-1111-1111-111111111111" >/dev/null
+  write_pi_session "$wt" "bbbbbbbb-1111-2222-3333-444444444444" >/dev/null
+  run "$POD" --all -f "$wt"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"--new"* && "$output" == *"--claude"* ]]
+}
+
+@test "--peers merges sources while excluding the observing Claude" {
+  wt=$(make_worktree mixed)
+  export CLAUDE_CODE_SESSION_ID=11111111-1111-1111-1111-111111111111
+  write_session "$wt" "$CLAUDE_CODE_SESSION_ID" >/dev/null
+  write_pi_session "$wt" "bbbbbbbb-1111-2222-3333-444444444444" >/dev/null
+  run "$POD" --peers "$wt"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"bbbbbbbb"* && "$output" != *"$CLAUDE_CODE_SESSION_ID"* ]]
+}
+
+@test "--all with only filtered-out Codex sessions is an empty success" {
+  wt=$(make_worktree mixed)
+  rmdir "$(session_dir_for "$wt")"
+  xf=$(write_codex_session "$wt" "aaaaaaaa-1111-2222-3333-444444444444" "user:old codex")
+  touch -t 202001010000 "$xf"
+  run --separate-stderr "$POD" --all --since 1h "$wt"
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"no matching sessions"* ]]
+}
+
+@test "--all applies since and exclude across sources" {
+  wt=$(make_worktree mixed)
+  cf=$(write_session "$wt" "11111111-1111-1111-1111-111111111111")
+  write_pi_session "$wt" "bbbbbbbb-1111-2222-3333-444444444444" >/dev/null
+  write_pi_session "$wt" "cccccccc-1111-2222-3333-444444444444" >/dev/null
+  touch -t 202001010000 "$cf"
+  run "$POD" --all --since 1h --exclude bbbbbbbb-1111-2222-3333-444444444444 "$wt"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cccccccc"* ]]
+  [[ "$output" != *"bbbbbbbb"* && "$output" != *"11111111-1111-1111-1111-111111111111"* ]]
 }
 
 @test "--pi renders the most-recent pi session in a worktree" {

@@ -102,16 +102,15 @@ usage() {
 
 	Selection:
 	  <path>                 most-recent session in that worktree
-	  --all [path]           list sessions in worktree, newest first
+	  --all [path]           list all agents' sessions in worktree, newest first
 	  --peers [path]         like --all but excludes \$CLAUDE_CODE_SESSION_ID
 	  --session <id-or-name> show a specific session by UUID or /rename name
 	  --exclude <id-or-name> skip this session (repeatable; with --all/--peers)
 
 	Source:
-	  (default: auto)        pick whichever source has sessions for the worktree;
-	                         if more than one does, the most recently active wins
-	                         and a hint on stderr names the other(s). --session
-	                         tries all three.
+	  (default: auto)        --all/--peers include all three sources. A single-session
+	                         read picks the most recently active source and names
+	                         the others on stderr. --session tries all three.
 	  --codex                force Codex (~/.codex) sessions. The worktree is matched
 	                         on each rollout's recorded cwd. Not supported for Codex:
 	                         --session by /rename name (no rename source), --all/
@@ -207,10 +206,7 @@ codex_sessions_dir="${AGENT_READ_CODEX_DIR:-$HOME/.codex/sessions}"
 #      nothing on disk that could ever tell it which session is "self").
 pi_sessions_dir="${AGENT_READ_PI_DIR:-$HOME/.pi/agent/sessions}"
 
-# claude | codex | pi | auto. 'auto' (the default) picks whichever source has
-# sessions for the worktree, resolved per invocation by resolve_auto_source;
-# --claude, --codex, and --pi pin it. Only worktree-scoped modes auto-resolve;
-# --session tries all three.
+# auto merges listings; single-session reads resolve to the freshest source.
 SOURCE=auto
 
 # ── Read cursors ───────────────────────────────────────────────────────────────
@@ -490,9 +486,61 @@ filtered_sessions_in() {
   done < <(ls -t "${files[@]}")
 }
 
+mixed_session_records() {
+  local target="$1" cwd dir pdir codex_out f
+  cwd="$(cd "$target" 2>/dev/null && pwd)" || {
+    echo "agent-read: not a directory: $target" >&2
+    return 1
+  }
+  dir="$(project_dir_for "$target")"
+  pdir="$(pi_project_dir_for "$target")"
+  codex_out="$(codex_filtered_files "$cwd")"
+  if [[ ! -d "$dir" && ! -d "$pdir" && -z "$codex_out" ]]; then
+    if ! codex_freshest_mtime "$cwd" >/dev/null; then
+      echo "agent-read: no sessions for $target" >&2
+      return 1
+    fi
+  fi
+  {
+    while IFS= read -r f; do
+      [[ -n "$f" ]] && printf '%s\tcodex\t%s\n' "$(stat -f '%m' "$f")" "$f"
+    done <<< "$codex_out"
+    if [[ -d "$dir" ]]; then
+      while IFS= read -r f; do
+        printf '%s\tclaude\t%s\n' "$(stat -f '%m' "$f")" "$f"
+      done < <(filtered_sessions_in "$dir")
+    fi
+    if [[ -d "$pdir" ]]; then
+      while IFS= read -r f; do
+        printf '%s\tpi\t%s\n' "$(stat -f '%m' "$f")" "$f"
+      done < <(pi_filtered_files "$pdir")
+    fi
+  } | sort -t $'\t' -k1,1nr
+}
+
+list_mixed_sessions() {
+  local records="$1" epoch source f sid name mtime turns
+  load_sid_name_map
+  load_sid_name_disk_map
+  printf '%-19s  %-8s  %-36s  %-5s  %s\n' 'modified' 'harness' 'sessionId' 'turns' 'name'
+  while IFS=$'\t' read -r epoch source f; do
+    name=""
+    case "$source" in
+      codex) sid="$(codex_sid_for "$f")" ;;
+      pi) sid="$(pi_sid_for "$f")" ;;
+      claude)
+        sid="${f##*/}"; sid="${sid%.jsonl}"
+        name="$(session_name_for "$sid")"
+        ;;
+    esac
+    mtime=$(stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S' "$f")
+    turns=$(wc -l < "$f" | tr -d ' ')
+    printf '%-19s  %-8s  %-36s  %-5s  %s\n' "$mtime" "$source" "$sid" "$turns" "$name"
+  done <<< "$records"
+}
+
 list_sessions() {
   local target="${1:-$PWD}"
-  resolve_auto_source "$target"
 
   if [[ "$SOURCE" == codex ]]; then
     local cwd
@@ -1662,6 +1710,32 @@ case "$MODE" in
     fi
     ;;
   list)
+    if [[ "$SOURCE" == auto ]]; then
+      records="$(mixed_session_records "${POSITIONAL:-$PWD}")" || exit $?
+      if [[ -z "$records" ]]; then
+        echo "agent-read: no matching sessions for ${POSITIONAL:-$PWD}" >&2
+        exit 0
+      fi
+      if [[ "$FOLLOW" -eq 1 ]]; then
+        files=()
+        while IFS=$'\t' read -r epoch source f; do
+          if [[ "$source" != claude ]]; then
+            echo "agent-read: --all/--peers -f doesn't support $source; use --new for all agents or --claude to follow Claude only" >&2
+            exit 2
+          fi
+          files+=("$f")
+        done <<< "$records"
+        SOURCE=claude
+        render_follow_all "${files[@]}"
+      elif [[ "$NEW" -eq 1 ]]; then
+        while IFS=$'\t' read -r epoch SOURCE f; do
+          render_session_new "$f"
+        done <<< "$records"
+      else
+        list_mixed_sessions "$records"
+      fi
+      exit 0
+    fi
     if [[ "$FOLLOW" -eq 1 || "$NEW" -eq 1 ]]; then
       target="${POSITIONAL:-$PWD}"
       resolve_auto_source "$target"
