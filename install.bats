@@ -79,6 +79,27 @@ settings_get() {
   [[ "$paths" == *"~/.claude/contexts"* ]]
 
   ! grep -q 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE' "$CLAUDE_DIR/settings.json"
+
+  local session_url
+  session_url=$(settings_get 'this.attribution.sessionUrl')
+  [ "$session_url" = "false" ]
+}
+
+@test "attribution: other attribution keys are preserved" {
+  cat > "$CLAUDE_DIR/settings.json" <<'EOF'
+{
+  "attribution": {
+    "commit": "custom trailer"
+  }
+}
+EOF
+  run_installer
+  [ "$status" -eq 0 ]
+  local commit session_url
+  commit=$(settings_get 'this.attribution.commit')
+  [ "$commit" = "custom trailer" ]
+  session_url=$(settings_get 'this.attribution.sessionUrl')
+  [ "$session_url" = "false" ]
 }
 
 @test "fresh install: drift and lemmalog hooks" {

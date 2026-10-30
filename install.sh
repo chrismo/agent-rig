@@ -53,6 +53,11 @@ echo "✓ Installed statusLine configuration"
 echo "  Command: bash $STATUSLINE_SCRIPT"
 echo ""
 
+new_settings=$(super -J -c "attribution.sessionUrl:=false" "$SETTINGS_FILE")
+echo "$new_settings" > "$SETTINGS_FILE"
+echo "✓ Disabled session URLs in attribution"
+echo ""
+
 # Merge agent-rig hooks into settings.json.
 #
 # Pattern: `values {...{hooks:{}}, ...this} | values {...this, hooks: {...this.hooks, Y: [...]}} | drop hooks.X`
