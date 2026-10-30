@@ -51,9 +51,16 @@ Community feedback (from the MCP below):
   them in a machine-written location (only macOS user defaults today, changing
   "very soon") and will get an export to a file, like "Copy as Lua" already
   does for shortcuts. When that lands, track the exported file under
-  `terminal/rex/`. Until then the only scriptable route is
-  `defaults write com.superlogical.rex Workspace.terminalFontPointSize ...`.
-  He also notes `init.lua` can already `require()` other files.
+  `terminal/rex/`. He also notes `init.lua` can already `require()` other files.
+
+Set the size in the Settings dialog. `defaults write com.superlogical.rex
+Workspace.terminalFontPointSize` has no effect on the running app (tried
+2026-10-30: new panes ignored it, then came up at an unexplained 24×48 px
+cells). Current choice: monofur at 18 pt, which renders small for its size.
+
+To check the size a new pane gets, open a throwaway pane and read its cell size
+(`rex block call ... size`). With monofur on Retina, `cell_height_px` came out
+at 2× the point size (16 pt → 32, 18 pt → 36).
 - [Expose font family, size, and smoothing in lua API](https://discord.com/channels/1546797889009881158/1565462610533552292) —
   the dotfiles request. Closed 2026-10-29 as a dupe of the one above.
 - [Increasing font and then setting font](https://discord.com/channels/1546797889009881158/1565674794035183626) —
