@@ -24,6 +24,8 @@ setup() {
   # ~/.config/mcp/mcp.json (it does not honour XDG_CONFIG_HOME), so the seam is
   # an explicit override rather than XDG.
   export AGENT_RIG_MCP_SHARED_CONFIG="$TEST_DIR/.config/mcp/mcp.json"
+  # Ghostty and Rex both read $XDG_CONFIG_HOME/<app>/ before ~/.config/<app>/.
+  export XDG_CONFIG_HOME="$TEST_DIR/.config"
   export AGENT_SKILLS_DIR="$TEST_DIR/.agents/skills"
   export CODEX_SKILLS_DIR="$TEST_DIR/.codex/skills"
   # Tests seed and harvest into a copy: writing the repo's own .sup files
@@ -666,6 +668,56 @@ OLD_CHECKOUT() { echo "$TEST_DIR/old/claude-rig"; }
   run super -f line -c 'values flatten(this.mcpServers) | unnest this | values key[0]' "$BATS_TEST_DIRNAME/pi/mcp.json"
   [ "$status" -eq 0 ]
   [[ "$output" == *"superdb"* ]]
+}
+
+# ── Terminal configs ────────────────────────────────────────────────────────
+#
+# Ghostty and Rex configs moved here from brain/xdg (2026-10-30). Every file
+# under terminal/<app>/ links into $XDG_CONFIG_HOME/<app>/. set-title.sh keeps
+# its ~/.config/ghostty/ path because .zshrc sources it from there.
+
+@test "terminal: ghostty and rex configs link to their repo sources" {
+  run_installer
+  [ "$status" -eq 0 ]
+  local file
+  for file in ghostty/config ghostty/moestty-icon.png rex/init.lua; do
+    [ -L "$XDG_CONFIG_HOME/$file" ]
+    [ "$(readlink "$XDG_CONFIG_HOME/$file")" = "$BATS_TEST_DIRNAME/terminal/$file" ]
+  done
+}
+
+@test "terminal: set-title.sh links to the tab-status copy" {
+  run_installer
+  [ "$status" -eq 0 ]
+  [ "$(readlink "$XDG_CONFIG_HOME/ghostty/set-title.sh")" = "$BATS_TEST_DIRNAME/tab-status/set-title.sh" ]
+}
+
+@test "terminal: a link into brain from an earlier install is replaced" {
+  mkdir -p "$XDG_CONFIG_HOME/ghostty"
+  ln -s "$HOME/modev/brain/xdg/.config/ghostty/set-title.sh" "$XDG_CONFIG_HOME/ghostty/set-title.sh"
+  ln -s "$HOME/modev/brain/xdg/.config/ghostty/config" "$XDG_CONFIG_HOME/ghostty/config"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ "$(readlink "$XDG_CONFIG_HOME/ghostty/set-title.sh")" = "$BATS_TEST_DIRNAME/tab-status/set-title.sh" ]
+  [ "$(readlink "$XDG_CONFIG_HOME/ghostty/config")" = "$BATS_TEST_DIRNAME/terminal/ghostty/config" ]
+}
+
+@test "terminal: a real config file is never clobbered, only reported" {
+  mkdir -p "$XDG_CONFIG_HOME/rex"
+  echo '-- theirs' > "$XDG_CONFIG_HOME/rex/init.lua"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ ! -L "$XDG_CONFIG_HOME/rex/init.lua" ]
+  grep -q theirs "$XDG_CONFIG_HOME/rex/init.lua"
+  [[ "$output" == *"$XDG_CONFIG_HOME/rex/init.lua"* ]]
+}
+
+@test "terminal: re-running the installer keeps the links" {
+  run_installer
+  run_installer
+  [ "$status" -eq 0 ]
+  [ -L "$XDG_CONFIG_HOME/ghostty/config" ]
+  [ -L "$XDG_CONFIG_HOME/rex/init.lua" ]
 }
 
 # ── Symlinks: bin commands ──────────────────────────────────────────────────

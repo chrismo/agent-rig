@@ -1,0 +1,160 @@
+# XDG config dir
+# DO NOT MODIFY IN PLACE. Change in agent-rig (terminal/ghostty/) and run install.sh.
+
+# "Sizes larger than the screen size will be clamped to the screen size."
+# https://ghostty.org/docs/config/reference#window-width
+## This commit broke things:
+## https://github.com/ghostty-org/ghostty/commit/c75bade8969401526e8a419a37821ba27fd779ca
+##
+## Fix: https://github.com/ghostty-org/ghostty/pull/9975
+
+window-width = 999
+window-height = 999
+
+# fullscreen = true # this is FULLSCREEN mode, not "maximize the window in the current screen"
+
+# Ghostty 1.4 changed the macOS default to `none`; `primary` keeps 1.3's
+# behavior: selecting copies to Ghostty's own selection pasteboard, which
+# middle-click pastes. It does NOT reach cmd+v; `clipboard` or `both` would.
+# (1.4's docs say `primary` has no effect on macOS, but the code still fills
+# that pasteboard: Ghostty.App.swift sets supports_selection_clipboard.)
+copy-on-select = primary
+
+# REMEMBER: Default keybindings only shown with `ghostty +list-keybinds | fzf`
+# Reference: https://ghostty.org/docs/config/keybind/reference
+#
+# shift+cmd+j (default) = write_screen_file:paste — dumps the screen to a temp
+# file and pastes its path. Scrollback variant: write_scrollback_file:{copy,paste,open}.
+#
+# The names are backwards from what you'd guess, and the author agrees they're
+# bad ("absolutely awful names" per ghostty#3496; mitchellh: "this is the
+# terminology we use internally"):
+#
+#   write_screen_file     = active screen = VISIBLE + SCROLLBACK. What you want.
+#   write_scrollback_file = ONLY the rows scrolled off. Excludes the viewport.
+#
+# "Screen" is internal jargon for the whole active buffer, not the viewport.
+# Verified: a shift+cmd+j dump was 293 lines out of a 24-row terminal.
+# The default was moved off write_scrollback_file in ghostty#5285 for this reason.
+#
+# So: the DEFAULT shift+cmd+j is already the right thing for "I forgot to run
+# logsh" — press it, paste the path to Claude. No override needed; don't "fix"
+# this by switching to write_scrollback_file, which loses the visible screen.
+
+keybind = super+alt+s=new_split:right
+keybind = super+alt+ctrl+s=new_split:down
+keybind = super+alt+m=goto_split:next
+
+# Navigate Splits - CMD + ALT + Arrows
+keybind = super+alt+up=goto_split:up
+keybind = super+alt+down=goto_split:down
+keybind = super+alt+left=goto_split:left
+keybind = super+alt+right=goto_split:right
+
+# Split resize (super+shift to avoid MBP keyboard ghosting with ctrl)
+# TODO: Consider changing to ctrl+shift+arrows to match JetBrains IDEs.
+# Muscle memory already reaches for ctrl+shift, so the ghosting workaround
+# isn't helping if you never use it. Occasional ghosting may be less annoying
+# than consistently missing the shortcut.
+keybind = super+shift+up=resize_split:up,20
+keybind = super+shift+down=resize_split:down,20
+keybind = super+shift+left=resize_split:left,20
+keybind = super+shift+right=resize_split:right,20
+
+# Move splits (Moestty only) - hold CMD + ALT + SHIFT and tap arrows to step
+# the highlighted half, like dragging; let go to move. Let go back on the
+# original split to cancel.
+keybind = super+alt+shift+up=move_split:up
+keybind = super+alt+shift+down=move_split:down
+keybind = super+alt+shift+left=move_split:left
+keybind = super+alt+shift+right=move_split:right
+
+keybind = super+alt+z=toggle_split_zoom
+# super+alt+equal doesn't actually fire equalize_splits - sometimes shows the
+# Bell icon, sometimes nothing. Not sure why. Leaving commented in case I want
+# to retry in the future.
+# keybind = super+alt+equal=equalize_splits
+keybind = super+alt+zero=equalize_splits
+
+# Step through scrollback one shell prompt at a time. The macOS default in
+# Ghostty 1.4 (1.3 had these as scroll_to_top/bottom); spelled out so a
+# 1.3-based build or a future default change doesn't take it away.
+keybind = super+up=jump_to_prompt:-1
+keybind = super+down=jump_to_prompt:1
+
+# Ghostty ships FOUR close bindings on W, all one thumb-slip apart:
+#
+#   super+w             close_surface       <- keep, used constantly
+#   super+alt+w         close_tab:this
+#   super+shift+w       close_window
+#   super+alt+shift+w   close_all_windows   <- no confirmation, no undo
+#
+# With confirm-close-surface = false (below), close_all_windows takes out every
+# window and every running session without a prompt. Hit it by accident once;
+# that was enough. super+alt+shift+w is also wanted by fresh-editor for
+# rewrap-paragraph, so Ghostty needs to stop swallowing it.
+#
+# Unbinding only the three; super+w stays.
+keybind = super+alt+w=unbind
+keybind = super+shift+w=unbind
+keybind = super+alt+shift+w=unbind
+# (The old `super+alt+w=close_other_tabs` idea is moot now - that chord is free.)
+
+# Move tab left/right
+keybind = super+shift+page_up=move_tab:-1
+keybind = super+shift+page_down=move_tab:1
+
+# Moestty-only actions. Keys are Dvorak letters; under the caps-lock layer
+# they are physical m, n, p.
+keybind = super+shift+m=mark_tab
+keybind = super+shift+b=move_marked_tabs_to_new_window
+keybind = super+shift+l=prompt_window_title
+# Replaces the default super+k=clear_screen.
+keybind = super+k=toggle_tab_switcher
+
+# this is a default binding I believe:
+#
+# keybind = super+shift+bracket_right=next_tab
+#
+# but it's buggy, obeying physical key, not virtual one.
+# so this unbinds it, then I can fix it back to what it was.
+##keybind = super+shift+bracket_right=unbind
+##keybind = super+shift+}=next_tab
+#
+# My discussion: https://github.com/ghostty-org/ghostty/discussions/9183
+# The fix: https://github.com/ghostty-org/ghostty/pull/9469
+
+macos-option-as-alt = true
+macos-titlebar-style = tabs
+
+focus-follows-mouse = true
+
+# Alternates to try:
+# #5fafaf - teal
+# #87af87 - muted green
+# #88c0d0 - Nord frost ice blue
+# Nord orange:
+split-divider-color = #d08770
+
+font-family = Nordwand Mono
+font-size = 15
+adjust-cell-width = -5%
+
+confirm-close-surface = false
+
+# Running Moestty (personal fork build); an update would replace it with an
+# official build.
+auto-update = off
+
+macos-icon = custom
+macos-custom-icon = ~/.config/ghostty/moestty-icon.png
+
+shell-integration-features = cursor,sudo,no-title
+
+# This just is ... ganky? I tried researching it, but it's still a bit weird
+# and even putting a simple echo 'hi there' in the .sh script "worked" but
+# then showed an error. Not what I was hoping for.
+#
+# initial-command = "~/ghostty_startup.sh"
+
+window-save-state = always

@@ -147,6 +147,10 @@ Driven by Claude hooks that fire on prompt submit, permission request, tool use,
 
 See `tab-status/tab-status.md` for detailed flow diagrams.
 
+### `terminal/`
+
+Terminal configs: `ghostty/` (Ghostty/Moestty config and icon) and `rex/init.lua` (Rex keybindings, mirroring the Ghostty split and tab keys). The installer links every file under `terminal/<app>/` into `$XDG_CONFIG_HOME/<app>/` (default `~/.config/`), and `tab-status/set-title.sh` to `~/.config/ghostty/set-title.sh`. A real file already at a destination is left alone and reported. These moved here from brain's `xdg/` on 2026-10-30.
+
 ### `install/`
 
 - **`claude-bundle-spec.md`** — design spec for a future `claude-bundle init` CLI that sets up new repos with common settings, templates, and preferences
@@ -274,7 +278,7 @@ The installer:
 8. Symlinks agents into `~/.claude/agents/`
 9. Symlinks rules into `~/.claude/rules/`
 
-For tab-status to update your Ghostty tab titles, source `tab-status/set-title.sh` from your `.zshrc` and ensure `tab-status` is on your PATH (the installer links it to `~/.local/bin/`).
+For tab-status to update your Ghostty tab titles, source `~/.config/ghostty/set-title.sh` (linked to `tab-status/set-title.sh`) from your `.zshrc` and ensure `tab-status` is on your PATH (the installer links it to `~/.local/bin/`).
 
 ## Dependencies
 

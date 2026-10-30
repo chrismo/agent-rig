@@ -488,6 +488,27 @@ if [[ -d "$PI_AGENT_DIR" ]] && [[ -f "$MCP_SHARED_SRC" ]]; then
   echo ""
 fi
 
+# Ghostty and Rex read $XDG_CONFIG_HOME/<app>/. A real file is never overwritten.
+# set-title.sh keeps its ghostty/ path because .zshrc sources it from there.
+XDG_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}"
+link_config() {
+  local src="$1" dest="$2"
+  if [[ -e "$dest" ]] && [[ ! -L "$dest" ]]; then
+    echo "⚠ $dest already exists and is not a symlink — leaving it alone."
+    return
+  fi
+  mkdir -p "$(dirname "$dest")"
+  [[ -L "$dest" ]] && rm "$dest"
+  ln -s "$src" "$dest"
+  echo "✓ Linked ${dest#"$XDG_CONFIG"/}"
+}
+for src in "$REPO_DIR"/terminal/*/*; do
+  [[ -f "$src" ]] || continue
+  link_config "$src" "$XDG_CONFIG/${src#"$REPO_DIR"/terminal/}"
+done
+link_config "$REPO_DIR/tab-status/set-title.sh" "$XDG_CONFIG/ghostty/set-title.sh"
+echo ""
+
 # Install the portable simplify skill where Codex, Pi, and OpenCode discover
 # Agent Skills. Other skills may depend on Claude-specific tools or behavior.
 shared_skill="$SKILLS_SRC/simplify"
