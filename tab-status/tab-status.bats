@@ -332,6 +332,52 @@ PS
   [ ! -f "$STATUS_DIR/$wt.bgreminder" ]
 }
 
+# ── --title terminal gate ───────────────────────────────────────────────────────
+
+stub_title_tools() {
+  STUB_BIN="$TEST_DIR/stub-bin"
+  CALL_LOG="$TEST_DIR/calls.log"
+  mkdir -p "$STUB_BIN"
+  : > "$CALL_LOG"
+  local tool
+  for tool in git ps osascript; do
+    printf '#!/bin/sh\necho %s >> "%s"\n' "$tool" "$CALL_LOG" > "$STUB_BIN/$tool"
+    chmod +x "$STUB_BIN/$tool"
+  done
+}
+
+@test "--title outside Ghostty does no title work at all" {
+  stub_title_tools
+  run env PATH="$STUB_BIN:$PATH" TERM_PROGRAM=rex STATUS_DIR="$STATUS_DIR" \
+    "$TAB_STATUS" --title </dev/null
+  [ "$status" -eq 0 ]
+  [ ! -s "$CALL_LOG" ]
+}
+
+@test "--title with TERM_PROGRAM unset does no title work at all" {
+  stub_title_tools
+  run env -u TERM_PROGRAM PATH="$STUB_BIN:$PATH" STATUS_DIR="$STATUS_DIR" \
+    "$TAB_STATUS" --title </dev/null
+  [ "$status" -eq 0 ]
+  [ ! -s "$CALL_LOG" ]
+}
+
+@test "--title inside Ghostty still computes and tries to deliver" {
+  stub_title_tools
+  run env PATH="$STUB_BIN:$PATH" TERM_PROGRAM=ghostty STATUS_DIR="$STATUS_DIR" \
+    "$TAB_STATUS" --title </dev/null
+  [ "$status" -eq 0 ]
+  [ -s "$CALL_LOG" ]
+}
+
+@test "--title inside a fork reporting moestty still computes and tries to deliver" {
+  stub_title_tools
+  run env PATH="$STUB_BIN:$PATH" TERM_PROGRAM=moestty STATUS_DIR="$STATUS_DIR" \
+    "$TAB_STATUS" --title </dev/null
+  [ "$status" -eq 0 ]
+  [ -s "$CALL_LOG" ]
+}
+
 @test "installed hook chain: title computation reads stdin --hook left unread (real pipe)" {
   # Faithfully replicates the installed hook command shape, with hook JSON on a
   # non-seekable pipe (process substitution): `--hook` ignores stdin, so the

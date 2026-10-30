@@ -257,8 +257,10 @@ resolve_stop_status() {
 main() {
   local worktree wt_status status_file manual_file reminder_file hook_mode=false
 
-  # Set the Ghostty tab title for the current session/worktree.
+  # Set the Ghostty tab title for the current session/worktree. Ghostty only:
+  # from another terminal the osascript triggers a macOS Automation prompt.
   if [[ "${1:-}" == "--title" ]]; then
+    [[ "${TERM_PROGRAM:-}" == ghostty || "${TERM_PROGRAM:-}" == moestty ]] || return 0
     deliver_title "$(compute_title)"
     return
   fi
