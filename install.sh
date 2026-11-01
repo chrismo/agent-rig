@@ -731,8 +731,7 @@ for cmd in agent-search agent-read claude-send claude-src work-context gt wt wt-
   fi
 done
 
-# claude-tabs is kept in the repo but no longer installed. Remove the link
-# earlier installs made; anything else at that path is not ours.
+# claude-tabs stays in the repo but is no longer installed.
 ct_dest="$LOCAL_BIN/claude-tabs"
 if [[ -L "$ct_dest" ]] && { [[ "$(readlink "$ct_dest")" == "$REPO_DIR/bin/claude-tabs" ]] || left_by_rename "$ct_dest"; }; then
   rm "$ct_dest"

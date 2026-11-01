@@ -738,7 +738,6 @@ OLD_CHECKOUT() { echo "$TEST_DIR/old/claude-rig"; }
   done
 }
 
-# claude-tabs stays in the repo but is no longer installed (2026-10-31).
 @test "bin: claude-tabs is not linked, and an earlier link is removed" {
   mkdir -p "$LOCAL_BIN"
   ln -s "$BATS_TEST_DIRNAME/bin/claude-tabs" "$LOCAL_BIN/claude-tabs"
