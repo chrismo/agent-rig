@@ -7,8 +7,8 @@ bats_require_minimum_version 1.5.0
 # agent-rig reads several things Claude Code does not expose as a supported
 # API. None of it is guaranteed to survive a point release. This suite asserts
 # that each load-bearing assumption still holds against the CURRENTLY INSTALLED
-# build, so a breaking change surfaces here instead of as a mysteriously empty
-# claude-tabs or an agent-read that renders nothing.
+# build, so a breaking change surfaces here instead of as an agent-read that
+# renders nothing.
 #
 # Each test is prefixed with an assumption ID (A1, B2, …). Those IDs are the
 # join to docs/internals-contract.md, which says what each one is for, who
@@ -122,7 +122,7 @@ assert_anchor() {
   [ "$found" -eq 1 ] || skip "no live sessions to check"
 }
 
-@test "B3: registry records still carry the fields claude-tabs and agent-read read" {
+@test "B3: registry records still carry the fields agent-read reads" {
   [ -d "$SESSIONS_DIR" ] || skip "no registry at $SESSIONS_DIR"
   local f
   f=$(ls -t "$SESSIONS_DIR"/*.json 2>/dev/null | head -1) || true

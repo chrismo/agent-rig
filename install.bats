@@ -173,14 +173,13 @@ EOF
   [ "$matcher" = "Bash" ]
 }
 
-@test "fresh install: tab status and session save hooks" {
+@test "fresh install: tab status hooks, no claude-tabs save" {
   run_installer
   [ "$status" -eq 0 ]
   local count cmd
   count=$(settings_get 'len(this.hooks.Stop)')
-  [ "$count" -eq 2 ]
-  cmd=$(settings_get 'this.hooks.Stop[1].hooks[0].command')
-  [[ "$cmd" == *"claude-tabs save"* ]]
+  [ "$count" -eq 1 ]
+  ! grep -q 'claude-tabs' "$CLAUDE_DIR/settings.json"
 
   cmd=$(settings_get 'this.hooks.Stop[0].hooks[0].command')
   [[ "$cmd" == *"tab-status --hook stop"* ]]
@@ -726,10 +725,28 @@ OLD_CHECKOUT() { echo "$TEST_DIR/old/claude-rig"; }
   run_installer
   [ "$status" -eq 0 ]
   local source
-  for source in bin/claude-tabs bin/ticket-sort bin/pi-sync bin/claude-src bin/wt-new bin/wt tab-status/tab-status; do
+  for source in bin/ticket-sort bin/pi-sync bin/claude-src bin/wt-new bin/wt tab-status/tab-status; do
     [ -L "$LOCAL_BIN/${source##*/}" ]
     [ "$(readlink "$LOCAL_BIN/${source##*/}")" = "$BATS_TEST_DIRNAME/$source" ]
   done
+}
+
+# claude-tabs stays in the repo but is no longer installed (2026-10-31).
+@test "bin: claude-tabs is not linked, and an earlier link is removed" {
+  mkdir -p "$LOCAL_BIN"
+  ln -s "$BATS_TEST_DIRNAME/bin/claude-tabs" "$LOCAL_BIN/claude-tabs"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ ! -L "$LOCAL_BIN/claude-tabs" ]
+  [ -f "$BATS_TEST_DIRNAME/bin/claude-tabs" ]
+}
+
+@test "bin: a claude-tabs not pointing into the repo is left alone" {
+  mkdir -p "$LOCAL_BIN"
+  ln -s /somewhere/else/claude-tabs "$LOCAL_BIN/claude-tabs"
+  run_installer
+  [ "$status" -eq 0 ]
+  [ "$(readlink "$LOCAL_BIN/claude-tabs")" = /somewhere/else/claude-tabs ]
 }
 
 # pr-tend (now sheepdog) moved to its own repo (2026-10-13); these links went with it.

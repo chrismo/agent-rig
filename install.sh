@@ -119,13 +119,6 @@ new_settings=$(
         type: 'command',
         command: '${HOOK_CMD_PREFIX} stop > /dev/null; ${TITLE_CMD}'
       }]
-    }, {
-      matcher: '',
-      hooks: [{
-        type: 'command',
-        command: 'claude-tabs save > /dev/null 2>&1 || true',
-        timeout: 5000
-      }]
     }],
     PreToolUse: [{
       matcher: 'Bash',
@@ -726,7 +719,7 @@ fi
 # When adding a new user-facing command to bin/, add it here.
 LOCAL_BIN="${LOCAL_BIN:-$HOME/.local/bin}"
 mkdir -p "$LOCAL_BIN"
-for cmd in claude-tabs agent-search agent-read claude-send claude-src work-context gt wt wt-new ticket-sort kaomoji pi-sync; do
+for cmd in agent-search agent-read claude-send claude-src work-context gt wt wt-new ticket-sort kaomoji pi-sync; do
   src="$REPO_DIR/bin/$cmd"
   dest="$LOCAL_BIN/$cmd"
   if [[ -f "$src" ]]; then
@@ -737,6 +730,14 @@ for cmd in claude-tabs agent-search agent-read claude-send claude-src work-conte
     echo "✓ Linked $cmd -> $LOCAL_BIN/"
   fi
 done
+
+# claude-tabs is kept in the repo but no longer installed. Remove the link
+# earlier installs made; anything else at that path is not ours.
+ct_dest="$LOCAL_BIN/claude-tabs"
+if [[ -L "$ct_dest" ]] && { [[ "$(readlink "$ct_dest")" == "$REPO_DIR/bin/claude-tabs" ]] || left_by_rename "$ct_dest"; }; then
+  rm "$ct_dest"
+  echo "✓ Removed claude-tabs link (no longer installed)"
+fi
 
 # tab-status lives in tab-status/ (not bin/) but is a user-facing command used
 # by the title hooks. Link it the same way so agent-rig owns

@@ -29,6 +29,10 @@ So: green suite plus a stale stamp means *unverified*, not *fine*.
 
 ## The assumptions
 
+¹ `claude-tabs` is still in `bin/` but `install.sh` no longer links it or runs
+its Stop hook (2026-10-31). It depends on these only when run by hand, so a
+failure that touches nothing else is low priority.
+
 ### A — peer messaging (source anchors)
 
 Checked by grepping the installed bundle with `bin/claude-src`. Anchors are
@@ -38,7 +42,7 @@ asserting on one would fail for a rename that broke nothing.
 | ID | Assumption | Relied on by | If it fails |
 |---|---|---|---|
 | A1 | The `uds-messaging` subsystem exists | `consult` skill, [protocol doc](inter-claude-protocol.md) | Peer messaging was restructured. Re-read the module before trusting anything in the protocol doc. |
-| A2 | Sessions advertise a socket via `messagingSocketPath` | `claude-tabs`, reachability marking | Reachability can no longer be read from the registry. Find the new field. |
+| A2 | Sessions advertise a socket via `messagingSocketPath` | reachability marking, `claude-tabs`¹ | Reachability can no longer be read from the registry. Find the new field. |
 | A3 | A session learns its own address from `CLAUDE_CODE_MESSAGING_SOCKET` | self-identification | Self-exclusion from rosters may break; find the new source. |
 | A4 | Wire format is newline-delimited JSON (the logged `Inject messages` recipe) | any hand-written socket write | Direct socket injection is unsafe. Stop writing to sockets until re-derived. |
 | A5 | Refs are `sha256(...)` cut to 12 (`digest("hex").slice(0,12)`) | offline ref computation | Every computed ref is wrong. Re-derive before using refs anywhere. |
@@ -51,9 +55,9 @@ asserting on one would fail for a rename that broke nothing.
 
 | ID | Assumption | Relied on by | If it fails |
 |---|---|---|---|
-| B1 | The registry directory exists | `claude-tabs`, `agent-read` | Session discovery is gone; `claude-tabs` falls back to nothing. Check whether it moved before rewriting anything. |
-| B2 | Files are named `<pid>.json` | `claude-tabs read_registry` | The filename is how the PID is known. A rename breaks liveness checks. |
-| B3 | Records carry `pid`, `sessionId`, `cwd`, `kind`, `status`, `startedAt` | `claude-tabs`, `agent-read` name map | Whichever field vanished — `sessionId` is the worst, it's the transcript join. |
+| B1 | The registry directory exists | `agent-read`, `claude-tabs`¹ | Session discovery is gone. Check whether it moved before rewriting anything. |
+| B2 | Files are named `<pid>.json` | `claude-tabs read_registry`¹ | The filename is how the PID is known. A rename breaks liveness checks. |
+| B3 | Records carry `pid`, `sessionId`, `cwd`, `kind`, `status`, `startedAt` | `agent-read` name map, `claude-tabs`¹ | Whichever field vanished — `sessionId` is the worst, it's the transcript join. |
 | B4 | `kind` ∈ `interactive\|bg\|daemon\|daemon-worker`, `status` ∈ `busy\|shell\|idle\|waiting` | status rendering | A new value renders as garbage rather than crashing. Add it. |
 
 ### R — runtime activation
@@ -104,7 +108,7 @@ losing it costs visibility, not function. Do not work around it.
 ### C — transcripts
 
 The widest blast radius in the repo: seven scripts read these
-(`agent-read`, `agent-search`, `claude-tabs`,
+(`agent-read`, `agent-search`, `claude-tabs`¹,
 `work-context`, and the three `session-*.sh`). It is also the surface most
 likely to change quietly, because it is a data format rather than a
 mechanism.
