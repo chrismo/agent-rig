@@ -37,8 +37,9 @@ merge_sup() {
   echo "$combined" | sort -u
 }
 
-# Extract allow rules (unnest array to one value per line)
-allow_output=$(super -s -c 'this.permissions.allow | unnest this | sort this | uniq' "$SETTINGS_FILE" 2>/dev/null || true)
+# The typeof filter matters: on superdb 0.4+ a missing list comes back as an
+# error value with exit 0, and would be written to the .sup file as a rule.
+allow_output=$(super -s -c 'this.permissions.allow | unnest this | where typeof(this)==<string> | sort this | uniq' "$SETTINGS_FILE" 2>/dev/null || true)
 if [[ -n "$allow_output" ]]; then
   merged=$(merge_sup "$allow_output" "$PERMISSIONS_ALLOW")
   count=$(echo "$merged" | wc -l | tr -d ' ')
@@ -54,8 +55,7 @@ else
   echo "  No allow rules found in settings.json"
 fi
 
-# Extract deny rules (unnest array to one value per line)
-deny_output=$(super -s -c 'this.permissions.deny | unnest this | sort this | uniq' "$SETTINGS_FILE" 2>/dev/null || true)
+deny_output=$(super -s -c 'this.permissions.deny | unnest this | where typeof(this)==<string> | sort this | uniq' "$SETTINGS_FILE" 2>/dev/null || true)
 if [[ -n "$deny_output" ]]; then
   merged=$(merge_sup "$deny_output" "$PERMISSIONS_DENY")
   count=$(echo "$merged" | wc -l | tr -d ' ')

@@ -49,6 +49,14 @@ settings_get() {
   super -f line -c "$1" "$CLAUDE_DIR/settings.json"
 }
 
+# superdb <=0.3 fails on a missing field; 0.4+ prints error("no such field x")
+# and exits 0.
+settings_absent() {
+  local out
+  out=$(settings_get "$1" 2>/dev/null) || return 0
+  [[ -z "$out" || "$out" == error\(* ]]
+}
+
 # ── Fresh install ──────────────────────────────────────────────────────────────
 
 @test "fresh install: settings, permissions, and sandbox defaults" {
@@ -123,8 +131,7 @@ EOF
   [[ "$cmd" == *"lemma-commit.sh"* ]]
 
   # A prefix prefilter misses compound commands like cd <repo> && git commit.
-  run settings_get 'this.hooks.PostToolUse[1].hooks[0].if'
-  [ "$status" -ne 0 ] || [ "$output" = "error(\"missing\")" ]
+  settings_absent 'this.hooks.PostToolUse[1].hooks[0].if'
 }
 
 @test "hooks: a user's own SessionStart entry is replaced by ours on re-install" {
@@ -664,7 +671,7 @@ OLD_CHECKOUT() { echo "$TEST_DIR/old/claude-rig"; }
 }
 
 @test "mcp: the tracked config parses and declares servers" {
-  run super -f line -c 'values flatten(this.mcpServers) | unnest this | values key[0]' "$BATS_TEST_DIRNAME/pi/mcp.json"
+  run super -j -c 'values this.mcpServers' "$BATS_TEST_DIRNAME/pi/mcp.json"
   [ "$status" -eq 0 ]
   [[ "$output" == *"superdb"* ]]
 }
@@ -961,9 +968,7 @@ fake_bash() {
 @test "permissions: empty deny.sup does not add deny key" {
   run_installer
   [ "$status" -eq 0 ]
-  # deny key should not exist since deny.sup is empty
-  run settings_get 'this.permissions.deny'
-  [ "$status" -ne 0 ] || [ -z "$output" ]
+  settings_absent 'this.permissions.deny'
 }
 
 @test "permissions: existing deny rules are preserved" {
