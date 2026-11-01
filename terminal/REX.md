@@ -26,7 +26,7 @@ the box before agent-rig intervenes.
 
 | Moestty / Ghostty | Rex |
 |---|---|
-| `move_split` | `pane.move` (bound in init.lua) |
+| `move_split` | `pane.move` (bound in init.lua) — **instant swap only**, see below |
 | `move_split_to_new_tab` | `pane.move_to_new_tab` |
 | `move_tab_to_split` | `pane.move_to_tab…` (picker, starts from the pane) |
 | `mark_tab` + `move_marked_tabs_to_new_window` | `client.tab.move_to_new_window`, one tab at a time — **no marks** |
@@ -36,6 +36,40 @@ Rex extras: floating panes (`pane.float`), detached blocks that keep running,
 server-side sessions, key modes and sequences, `rex move` / `rex swap` from the
 CLI. Not yet checked: what Rex's default `cmd+alt+shift+w` does (Ghostty's
 closed every window, so the Ghostty config unbinds it).
+
+### `move_split` is interactive in Moestty, a swap in Rex
+
+Moestty's `move_split` doesn't move on the keypress. It shows a highlighted
+target square in the destination pane, and further presses walk it around that
+pane's four edges (top/bottom/left/right). Releasing the modifiers drops the
+split there, so one gesture can also change split orientation. Rex's
+`pane.move` just swaps with the neighbor.
+
+Partly rebuildable, maybe (untested, 2026-11-01).
+`rex.session.move_block{block_id, anchor_block_id, direction, side, ratio}` is
+a positional move, so any edge of a neighbor is reachable. adi's `rotate_split`
+in the "Rotate / transpose a split" #feedback thread uses it, finding the
+sibling by walking `rex.session.view{}` layouts. Still missing: a preview
+overlay and a modifier-release event (a doc search found neither). A
+workaround is to move the pane for real on each press, letting the pane act as
+the preview. The docs say `rex.bind` Lua functions aren't allowed inside a key
+mode; adi binds a named `rex.action` by name, which might be allowed there.
+
+Related #feedback: "Move pane l/r/u/d should also change split" (active,
+2026-11-01), "moving pane from vertical to horizontal" (deferred), and "Rotate /
+transpose a split" (active, has the `move_block` workaround). All are the
+orientation half of this. Neither has the preview-and-commit targeting.
+
+## Wrapped URLs
+
+A URL that wraps onto the next line only highlights (and clicks) up to the
+wrap (observed 2026-11-01). The upside: when the continuation line is indented,
+copying the URL drops those indent spaces, so the clipboard gets a clean URL.
+
+Two active #feedback bugs cover it: "URL parsing error caused by text wrapping"
+(2026-10-23, only the first line becomes the link) and "Long-press copy
+soft-wrapped link copies only first part" (2026-10-29). No team reply on either
+yet, and no changelog entry.
 
 ## Font size
 
