@@ -26,7 +26,7 @@ the box before agent-rig intervenes.
 
 | Moestty / Ghostty | Rex |
 |---|---|
-| `move_split` | `pane.move` (bound in init.lua) — **instant swap only**, see below |
+| `move_split` | custom `pane_move_target` action in init.lua, see below |
 | `move_split_to_new_tab` | `pane.move_to_new_tab` |
 | `move_tab_to_split` | `pane.move_to_tab…` (picker, starts from the pane) |
 | `mark_tab` + `move_marked_tabs_to_new_window` | `client.tab.move_to_new_window`, one tab at a time — **no marks** |
@@ -37,28 +37,44 @@ server-side sessions, key modes and sequences, `rex move` / `rex swap` from the
 CLI. Not yet checked: what Rex's default `cmd+alt+shift+w` does (Ghostty's
 closed every window, so the Ghostty config unbinds it).
 
-### `move_split` is interactive in Moestty, a swap in Rex
+### `move_split`: rebuilt as `pane_move_target`
 
 Moestty's `move_split` doesn't move on the keypress. It shows a highlighted
 target square in the destination pane, and further presses walk it around that
 pane's four edges (top/bottom/left/right). Releasing the modifiers drops the
-split there, so one gesture can also change split orientation. Rex's
+split there, so one gesture can also change split orientation. Rex's built-in
 `pane.move` just swaps with the neighbor.
 
-Partly rebuildable, maybe (untested, 2026-11-01).
-`rex.session.move_block{block_id, anchor_block_id, direction, side, ratio}` is
-a positional move, so any edge of a neighbor is reachable. adi's `rotate_split`
-in the "Rotate / transpose a split" #feedback thread uses it, finding the
-sibling by walking `rex.session.view{}` layouts. Still missing: a preview
-overlay and a modifier-release event (a doc search found neither). A
-workaround is to move the pane for real on each press, letting the pane act as
-the preview. The docs say `rex.bind` Lua functions aren't allowed inside a key
-mode; adi binds a named `rex.action` by name, which might be allowed there.
+`pane_move_target` in `init.lua` (on ⌘⌥⇧+arrows) gets close, working since
+2026-11-01. The first press moves the pane to the near edge of the neighbor in
+that direction, or crosses to the far edge if it's already there, so two panes
+still swap. Quick further presses walk it around that neighbor's edges.
+Pressing toward the edge it's already on jumps it to the next pane over.
+
+It's built on `rex.session.move_block{block_id, anchor_block_id, direction,
+side}`, a positional move, with neighbors found from the rects in
+`rex.session.view{}` layouts. The idea came from adi's `rotate_split` in the
+"Rotate / transpose a split" #feedback thread. It differs from Moestty in two
+ways:
+
+- **No preview square.** No overlay API was found, so each press really moves
+  the pane, and the pane is its own preview.
+- **A pause ends the move, not releasing the modifiers.** No release event was
+  found. A gap of 2–3 s (`MOVE_PAUSE_SECONDS`, which `os.time()` only measures
+  in whole seconds) starts a fresh move. Module-level Lua state in `init.lua`
+  does persist between keypresses (confirmed in use).
+
+A key mode was tried first and dropped. Inside a mode, a binding must name an
+action, not a Lua function, but a named custom action is fine. The problem is
+that Rex pins a key-hint panel up for as long as any mode is active, and turning
+off "Show key sequence hints" doesn't hide it. An option to hide it is an
+accepted #feedback request, "Option to hide or minimize the persistent key-mode
+panel".
 
 Related #feedback: "Move pane l/r/u/d should also change split" (active,
 2026-11-01), "moving pane from vertical to horizontal" (deferred), and "Rotate /
-transpose a split" (active, has the `move_block` workaround). All are the
-orientation half of this. Neither has the preview-and-commit targeting.
+transpose a split" (active). All three only ask to change split orientation.
+None asks for walking the pane around a target.
 
 ## Wrapped URLs
 
