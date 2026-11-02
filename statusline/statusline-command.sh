@@ -1,4 +1,5 @@
 #!/bin/bash
+export ASDF_SUPERDB_VERSION=0.3.0
 
 # NOTE: Target Bash 3.2 compatibility (macOS default).
 # Avoid: ${var,,}, ${var^^}, local -n, associative arrays, etc.

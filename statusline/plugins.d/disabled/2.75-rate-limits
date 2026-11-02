@@ -1,5 +1,6 @@
 #!/bin/bash
 # Segment: rate limit usage (5-hour and 7-day windows)
+export ASDF_SUPERDB_VERSION=0.3.0
 input="${CLAUDE_STATUS_INPUT:-/tmp/claude-status-input.json}"
 
 muted_green="\033[2;32m"

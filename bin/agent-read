@@ -64,6 +64,7 @@
 #
 
 set -euo pipefail
+export ASDF_SUPERDB_VERSION=0.3.0
 shopt -s nullglob
 
 # Silence SIGPIPE write errors when output is piped to head/less/etc.

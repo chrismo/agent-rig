@@ -19,6 +19,7 @@
 # Requires: super (SuperDB), grdy, python3.
 
 set -euo pipefail
+export ASDF_SUPERDB_VERSION=0.3.0
 shopt -s nullglob
 
 usage() {

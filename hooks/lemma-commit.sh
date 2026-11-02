@@ -35,6 +35,7 @@
 # attached to an unrelated tool call. Every unresolvable case exits 0 in silence.
 
 set -uo pipefail
+export ASDF_SUPERDB_VERSION=0.4.0
 
 REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 QUEUE_CMD="${AGENT_RIG_LEMMA_QUEUE_CMD:-$REPO_DIR/bin/lemma-queue}"

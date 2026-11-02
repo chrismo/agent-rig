@@ -22,6 +22,7 @@
 # down with it. Every unresolvable case exits 0 in silence.
 
 set -uo pipefail
+export ASDF_SUPERDB_VERSION=0.4.0
 
 QUEUE="${AGENT_RIG_LEMMA_QUEUE:-$HOME/.claude/lemmalog/pending.tsv}"
 MARKER="${AGENT_RIG_LEMMA_MARKER:-$HOME/.claude/lemmalog/enabled}"

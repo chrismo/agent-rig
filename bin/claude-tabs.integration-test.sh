@@ -39,6 +39,7 @@
 #   --close   close the test window automatically when done (default: leave open)
 
 set -euo pipefail
+export ASDF_SUPERDB_VERSION=0.3.0
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 TABS="$REPO/bin/claude-tabs"

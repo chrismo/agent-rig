@@ -69,6 +69,7 @@
 #
 
 set -euo pipefail
+export ASDF_SUPERDB_VERSION=0.3.0
 
 CLAUDE_TABS_PROJECTS_DIR="${CLAUDE_TABS_PROJECTS_DIR:-$HOME/.claude/projects}"
 CLAUDE_TABS_MANIFEST="${CLAUDE_TABS_MANIFEST:-$HOME/.claude/tab-state.json}"

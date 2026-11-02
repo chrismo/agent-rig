@@ -7,6 +7,7 @@
 # and decide what should live in sandbox config vs. in PreToolUse hooks vs. not
 # be enforced at all. If this script is still the right answer, re-wire it in
 # install.sh; otherwise delete it.
+export ASDF_SUPERDB_VERSION=0.4.0
 
 SETTINGS=".claude/settings.local.json"
 

@@ -35,6 +35,7 @@
 # one that says why it could not.
 
 set -uo pipefail
+export ASDF_SUPERDB_VERSION=0.3.0
 
 # Test seams. Every one of these is a real default on a real machine; the suite
 # overrides them to keep off the network and out of the user's config.

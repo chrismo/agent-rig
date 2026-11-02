@@ -22,6 +22,7 @@
 # diagnoses; it never gates.
 
 set -uo pipefail
+export ASDF_SUPERDB_VERSION=0.3.0
 
 # Same defaults as bin/lemma-install and hooks/lemma-brief.sh. They are pinned
 # to each other by bin/lemma-install.bats — a disagreement here would report a

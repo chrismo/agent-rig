@@ -1,5 +1,6 @@
 #!/bin/bash
 # Segment: session cost
+export ASDF_SUPERDB_VERSION=0.4.0
 input="${CLAUDE_STATUS_INPUT:-/tmp/claude-status-input.json}"
 
 cost_usd=$(super -f line -c 'coalesce(cost.total_cost_usd, 0)' "$input")

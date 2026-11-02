@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+export ASDF_SUPERDB_VERSION=0.4.0
 
 # Harvest permissions from ~/.claude/settings.json back into agent-rig .sup files
 # Usage: harvest [--dry-run]

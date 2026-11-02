@@ -4,6 +4,7 @@
 # and rejects compound commands (pipes, chains) which typically cause permission prompts.
 
 set -euo pipefail
+export ASDF_SUPERDB_VERSION=0.4.0
 
 trap 'deny_tool "HOOK CRASH in use-dedicated-tools.sh (line $LINENO). Do NOT retry — the hook code itself is broken. Stop and tell the user."' ERR
 

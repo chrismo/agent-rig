@@ -1,5 +1,6 @@
 #!/bin/bash
 # Segment: model name and reasoning effort level
+export ASDF_SUPERDB_VERSION=0.4.0
 
 muted_green="\033[2;32m"
 color_reset="\033[2;37m"

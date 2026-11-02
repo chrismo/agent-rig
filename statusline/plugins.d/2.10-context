@@ -1,6 +1,7 @@
 #!/bin/bash
 # Segment: context window usage in k tokens, colored green -> yellow -> red
 # between 100k and 200k.
+export ASDF_SUPERDB_VERSION=0.3.0
 input="${CLAUDE_STATUS_INPUT:-/tmp/claude-status-input.json}"
 
 color_reset="\033[2;37m"

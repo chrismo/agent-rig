@@ -9,6 +9,7 @@
 # Alternative to plugins.d/2.75-rate-limits (the wedge layout). Make exactly
 # one of them executable with `chmod +x` to pick a default — or keep both
 # executable to render both segments side by side.
+export ASDF_SUPERDB_VERSION=0.3.0
 
 input="${CLAUDE_STATUS_INPUT:-/tmp/claude-status-input.json}"
 

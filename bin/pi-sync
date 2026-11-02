@@ -27,6 +27,7 @@
 # hooks' silent exit 0.
 
 set -uo pipefail
+export ASDF_SUPERDB_VERSION=0.3.0
 
 # install.sh links this script into ~/.local/bin, so on a real run $BASH_SOURCE
 # is the symlink. Walk the link chain to the file in the repo — resolving only
