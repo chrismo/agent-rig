@@ -26,7 +26,7 @@ the box before agent-rig intervenes.
 
 | Moestty / Ghostty | Rex |
 |---|---|
-| `move_split` | custom `pane_move_dir` + `pane_rotate_split` actions in init.lua, see below |
+| `move_split` | custom `pane_move_dir`, `pane_push_dir`, `pane_rotate_split` actions in init.lua, see below |
 | `move_split_to_new_tab` | `pane.move_to_new_tab` |
 | `move_tab_to_split` | `pane.move_to_tab…` (picker, starts from the pane) |
 | `mark_tab` + `move_marked_tabs_to_new_window` | `client.tab.move_to_new_window`, one tab at a time — **no marks** |
@@ -54,10 +54,21 @@ layout on screen:
   (`session.move_block`) on whichever edge best keeps its row or column. So in
   ccc | aaa / (ddd | bbb), ddd ← lands under ccc, not beside it. With no
   neighbor that way, nothing happens.
+- **⌥⇧+arrow, `pane_push_dir`.** The pane always moves, never swaps. It joins
+  the neighbor's row (↑↓) or column (←→), landing on the side nearer where it
+  was. On a tie, it lands nearer the window edge it was closer to. In a
+  row-first 2×2, TR ↓ gives TL across the top and BL | BR | TR below, and TR ↑
+  undoes it. Sizes are left as Rex splits them. ⌘⌃ was ruled out because the
+  MBP keyboard can't register caps+A+F+J, and the swap chord already uses every
+  finger (see brain's `keyboarding/physical-keyboard-limitations.md`).
 - **⌘⌥R, `pane_rotate_split`.** Flips the pane and its split partner between
   side by side and stacked. It's based on adi's `rotate_split` in the "Rotate /
   transpose a split" #feedback thread, and refuses when the partner is a group of
-  panes.
+  panes. Rex turned out to have a built-in Rotate Split as well; the two
+  haven't been compared.
+
+Left as good enough (2026-11-01): push has a glitch or two that haven't been
+looked into, and the whole set could be refined with more study.
 
 Why not the Moestty gesture: without a preview, each press has to commit a real
 move. A version that walked the pane around a target used an invisible "still
@@ -75,6 +86,8 @@ Unavoidable surprise left, from Rex's binary split tree:
 - A move out of a split always hands that space to the pane's partner in the
   tree, which isn't visible. Two layouts that look the same can stretch
   differently. Swapping avoids this, which is why swap is the default.
+- Push leaves a hole that the tree partner fills. In a column-first 2×2, TR ↓
+  makes three full-height columns, not one-plus-three.
 - Rotate pairs a pane with its tree partner. In a 2×2, the lower-left pane's
   partner is the upper-left pane if the grid was built column-first, or the
   lower-right pane if it was built row-first.
@@ -86,6 +99,19 @@ Unavoidable surprise left, from Rex's binary split tree:
 Related #feedback: "Move pane l/r/u/d should also change split" (active,
 2026-11-01), "moving pane from vertical to horizontal" (deferred), and "Rotate /
 transpose a split" (active).
+
+## Sidebar vanished: a two-finger swipe
+
+A two-finger horizontal trackpad swipe hides and shows the sidebar (confirmed by
+chrismo, 2026-11-01). Tabs are untouched; it just looks like they are gone.
+Cmd+/ (Show Sidebar) brings it back.
+
+- Setting: "Use a gesture to toggle the sidebar" — Swipe (default), Option-swipe
+  or Off (preview.21, 2026-10-26).
+- Settings → Interface → Gestures → "Use trackpad gestures" turns this and the
+  pane-switch swipe off together (preview.24, 2026-10-30).
+- Known to misfire on horizontal scrolling in neovim, diffs and mouse-capture
+  TUIs. Several #feedback threads, some deferred.
 
 ## Wrapped URLs
 

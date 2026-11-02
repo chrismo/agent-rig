@@ -145,6 +145,30 @@ rex.action{
   end,
 }
 
+rex.action{
+  name        = "pane_push_dir",
+  title       = "Push Pane",
+  description = "Move the pane into the neighbor that way, joining its row (up/down) or column (left/right).",
+  args        = { direction = "string" },
+  run         = function(ctx, args)
+    local me, dir = ctx.block_id, args.direction
+    if me == nil then error("no focused pane", 0) end
+    if OPPOSITE[dir] == nil then error("direction must be left, right, up, or down", 0) end
+    local next_pane, my_rect, next_rect = neighbor(current_layout(me), me, dir)
+    if next_pane == nil then return nil end
+    local i, sides = 1, { "left", "right" }
+    if dir == "left" or dir == "right" then i, sides = 2, { "up", "down" } end
+    local mine = my_rect[i] + my_rect[i + 2] / 2
+    local theirs = next_rect[i] + next_rect[i + 2] / 2
+    -- Land on the side nearer where the pane was; on a tie, the side nearer
+    -- the window edge it was closer to.
+    local after = mine > theirs + EPS or (math.abs(mine - theirs) <= EPS and mine >= 0.5)
+    local edge = after and sides[2] or sides[1]
+    place(me, next_pane, edge)
+    return { anchor = next_pane, edge = edge }
+  end,
+}
+
 -- After adi's rotate_split in the "Rotate / transpose a split" #feedback thread.
 rex.action{
   name        = "pane_rotate_split",
@@ -172,6 +196,7 @@ rex.action{
 
 for _, dir in ipairs({ "up", "down", "left", "right" }) do
   rex.bind("cmd+alt+shift+" .. dir, "pane_move_dir", { direction = dir })
+  rex.bind("alt+shift+" .. dir, "pane_push_dir", { direction = dir })
 end
 rex.bind("cmd+alt+r", "pane_rotate_split")
 
