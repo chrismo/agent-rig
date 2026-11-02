@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-export ASDF_SUPERDB_VERSION=0.51231
+export ASDF_SUPERDB_VERSION=0.3.0
 
 # Colors
 BOLD='\033[1m'

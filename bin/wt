@@ -22,7 +22,7 @@ set -euo pipefail
 
 # The porcelain parse below is written against this version's grok/aggregate
 # behavior; pin it rather than inherit whatever asdf resolves today.
-export ASDF_SUPERDB_VERSION=0.51231
+export ASDF_SUPERDB_VERSION=0.4.0
 WT_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 
 # Seam for tests: the raw `git worktree list --porcelain` output.
