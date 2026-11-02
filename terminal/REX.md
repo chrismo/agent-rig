@@ -26,7 +26,7 @@ the box before agent-rig intervenes.
 
 | Moestty / Ghostty | Rex |
 |---|---|
-| `move_split` | custom `pane_move_dir`, `pane_push_dir`, `pane_rotate_split` actions in `panes.lua`, see below |
+| `move_split` | custom `pane_move_dir` and `pane_push_dir` actions in `panes.lua`, see below |
 | `move_split_to_new_tab` | `pane.move_to_new_tab` |
 | `move_tab_to_split` | `pane.move_to_tab…` (picker, starts from the pane) |
 | `mark_tab` + `move_marked_tabs_to_new_window` | `client.tab.move_to_new_window`, one tab at a time — **no marks** |
@@ -45,30 +45,14 @@ pane's four edges (top/bottom/left/right). Releasing the modifiers drops the
 split there, so one gesture can also change split orientation. Rex's built-in
 `pane.move` just swaps with the neighbor.
 
-What's in `terminal/rex/panes.lua` (required from `init.lua`) instead (2026-11-01). Every press depends only on the
-layout on screen:
+Instead, `terminal/rex/panes.lua` adds a swap/move-into on ⌘⌥⇧+arrow and a
+push into the neighbor's row or column on ⌥⇧+arrow (2026-11-01). ⌘⌃ was ruled
+out for push because the MBP keyboard can't register caps+A+F+J, and the swap
+chord already uses every finger (see brain's
+`keyboarding/physical-keyboard-limitations.md`). For flipping a split between
+side by side and stacked, use Rex's built-in Rotate Split.
 
-- **⌘⌥⇧+arrow, `pane_move_dir`.** If the neighbor that way shares the pane's
-  full row (or column), the two swap (`session.swap_blocks`), and the opposite
-  arrow undoes it. If the neighbor is larger, the pane moves into it
-  (`session.move_block`) on whichever edge best keeps its row or column. So in
-  ccc | aaa / (ddd | bbb), ddd ← lands under ccc, not beside it. With no
-  neighbor that way, nothing happens.
-- **⌥⇧+arrow, `pane_push_dir`.** The pane always moves, never swaps. It joins
-  the neighbor's row (↑↓) or column (←→), landing on the side nearer where it
-  was. On a tie, it lands nearer the window edge it was closer to. In a
-  row-first 2×2, TR ↓ gives TL across the top and BL | BR | TR below, and TR ↑
-  undoes it. Sizes are left as Rex splits them. ⌘⌃ was ruled out because the
-  MBP keyboard can't register caps+A+F+J, and the swap chord already uses every
-  finger (see brain's `keyboarding/physical-keyboard-limitations.md`).
-- **⌘⌥R, `pane_rotate_split`.** Flips the pane and its split partner between
-  side by side and stacked. It's based on adi's `rotate_split` in the "Rotate /
-  transpose a split" #feedback thread, and refuses when the partner is a group of
-  panes. Rex turned out to have a built-in Rotate Split as well; the two
-  haven't been compared.
-
-Left as good enough (2026-11-01): push has a glitch or two that haven't been
-looked into, and the whole set could be refined with more study.
+Left as good enough: push has a glitch or two that haven't been looked into.
 
 Why not the Moestty gesture: without a preview, each press has to commit a real
 move. A version that walked the pane around a target used an invisible "still
@@ -85,12 +69,9 @@ Unavoidable surprise left, from Rex's binary split tree:
 
 - A move out of a split always hands that space to the pane's partner in the
   tree, which isn't visible. Two layouts that look the same can stretch
-  differently. Swapping avoids this, which is why swap is the default.
+  differently.
 - Push leaves a hole that the tree partner fills. In a column-first 2×2, TR ↓
   makes three full-height columns, not one-plus-three.
-- Rotate pairs a pane with its tree partner. In a 2×2, the lower-left pane's
-  partner is the upper-left pane if the grid was built column-first, or the
-  lower-right pane if it was built row-first.
 - `move_block` can't take a group of panes as its target.
   So "full-height pane ← past a stacked column" lands beside one pane of that
   column. Untried fix: `session.new_split` *can* anchor on a split, so create a

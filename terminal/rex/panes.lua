@@ -1,7 +1,6 @@
 -- DO NOT MODIFY IN PLACE. Change in agent-rig (terminal/rex/) and run install.sh,
 -- then: rex config check && rex config reload
 
--- Pane moves that depend only on the layout on screen; see terminal/REX.md.
 local OPPOSITE = { left = "right", right = "left", up = "down", down = "up" }
 local EPS = 1e-6
 
@@ -99,16 +98,6 @@ local function place(block_id, anchor_id, edge)
   if err ~= nil then error(err, 0) end
 end
 
-local function parent_of(node, block_id)
-  local split = node.split
-  if split == nil then return nil end
-  for _, side in ipairs({ "before", "after" }) do
-    if split[side].block_id == block_id then return split, side end
-    local found, found_side = parent_of(split[side], block_id)
-    if found ~= nil then return found, found_side end
-  end
-end
-
 rex.action{
   name        = "pane_move_dir",
   title       = "Move Pane",
@@ -148,32 +137,7 @@ rex.action{
   end,
 }
 
-rex.action{
-  name        = "pane_rotate_split",
-  title       = "Rotate Split",
-  description = "Turn this pane and its split partner from side by side to stacked, or back.",
-  run         = function(ctx)
-    local me = ctx.block_id
-    if me == nil then error("no focused pane", 0) end
-    local split, side = parent_of(current_layout(me), me)
-    if split == nil then error("the focused pane has no split to rotate", 0) end
-    local partner = split[side == "before" and "after" or "before"]
-    if partner.block_id == nil then
-      error("this pane's split partner is a group of panes; rotate from one of those", 0)
-    end
-    local _, err = rex.session.move_block{
-      block_id        = me,
-      anchor_block_id = partner.block_id,
-      direction       = split.direction == "horizontal" and "vertical" or "horizontal",
-      side            = side,
-      ratio           = split.ratio,
-    }
-    if err ~= nil then error(err, 0) end
-  end,
-}
-
 for _, dir in ipairs({ "up", "down", "left", "right" }) do
   rex.bind("cmd+alt+shift+" .. dir, "pane_move_dir", { direction = dir })
   rex.bind("alt+shift+" .. dir, "pane_push_dir", { direction = dir })
 end
-rex.bind("cmd+alt+r", "pane_rotate_split")
