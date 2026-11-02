@@ -6,8 +6,8 @@ personal Ghostty fork in `~/modev/ghostty`. Started 2026-10-30 on Rex Beta 0.1.0
 
 ## Setup
 
-- Config: `terminal/rex/init.lua`, linked to `~/.config/rex/init.lua` by
-  `install.sh`. Apply with `rex config check && rex config reload`.
+- Config: `terminal/rex/init.lua`, which `require`s `panes.lua`. Each file is
+  linked into `~/.config/rex/` by `install.sh`. Apply with `rex config check && rex config reload`.
 - Shortcuts set in the app's settings override `init.lua`. They're stored in
   `~/Library/Application Support/com.superlogical.rex/Shortcuts/shortcuts.json`
   (per a #feedback thread, not checked here).
@@ -26,7 +26,7 @@ the box before agent-rig intervenes.
 
 | Moestty / Ghostty | Rex |
 |---|---|
-| `move_split` | custom `pane_move_dir`, `pane_push_dir`, `pane_rotate_split` actions in init.lua, see below |
+| `move_split` | custom `pane_move_dir`, `pane_push_dir`, `pane_rotate_split` actions in `panes.lua`, see below |
 | `move_split_to_new_tab` | `pane.move_to_new_tab` |
 | `move_tab_to_split` | `pane.move_to_tab…` (picker, starts from the pane) |
 | `mark_tab` + `move_marked_tabs_to_new_window` | `client.tab.move_to_new_window`, one tab at a time — **no marks** |
@@ -45,7 +45,7 @@ pane's four edges (top/bottom/left/right). Releasing the modifiers drops the
 split there, so one gesture can also change split orientation. Rex's built-in
 `pane.move` just swaps with the neighbor.
 
-What's in `init.lua` instead (2026-11-01). Every press depends only on the
+What's in `terminal/rex/panes.lua` (required from `init.lua`) instead (2026-11-01). Every press depends only on the
 layout on screen:
 
 - **⌘⌥⇧+arrow, `pane_move_dir`.** If the neighbor that way shares the pane's
