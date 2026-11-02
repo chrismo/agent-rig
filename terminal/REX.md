@@ -26,7 +26,7 @@ the box before agent-rig intervenes.
 
 | Moestty / Ghostty | Rex |
 |---|---|
-| `move_split` | custom `pane_move_target` action in init.lua, see below |
+| `move_split` | custom `pane_move_dir` + `pane_rotate_split` actions in init.lua, see below |
 | `move_split_to_new_tab` | `pane.move_to_new_tab` |
 | `move_tab_to_split` | `pane.move_to_tab…` (picker, starts from the pane) |
 | `mark_tab` + `move_marked_tabs_to_new_window` | `client.tab.move_to_new_window`, one tab at a time — **no marks** |
@@ -37,7 +37,7 @@ server-side sessions, key modes and sequences, `rex move` / `rex swap` from the
 CLI. Not yet checked: what Rex's default `cmd+alt+shift+w` does (Ghostty's
 closed every window, so the Ghostty config unbinds it).
 
-### `move_split`: rebuilt as `pane_move_target`
+### `move_split`: replaced, not rebuilt
 
 Moestty's `move_split` doesn't move on the keypress. It shows a highlighted
 target square in the destination pane, and further presses walk it around that
@@ -45,36 +45,47 @@ pane's four edges (top/bottom/left/right). Releasing the modifiers drops the
 split there, so one gesture can also change split orientation. Rex's built-in
 `pane.move` just swaps with the neighbor.
 
-`pane_move_target` in `init.lua` (on ⌘⌥⇧+arrows) gets close, working since
-2026-11-01. The first press moves the pane to the near edge of the neighbor in
-that direction, or crosses to the far edge if it's already there, so two panes
-still swap. Quick further presses walk it around that neighbor's edges.
-Pressing toward the edge it's already on jumps it to the next pane over.
+What's in `init.lua` instead (2026-11-01). Every press depends only on the
+layout on screen:
 
-It's built on `rex.session.move_block{block_id, anchor_block_id, direction,
-side}`, a positional move, with neighbors found from the rects in
-`rex.session.view{}` layouts. The idea came from adi's `rotate_split` in the
-"Rotate / transpose a split" #feedback thread. It differs from Moestty in two
-ways:
+- **⌘⌥⇧+arrow, `pane_move_dir`.** If the neighbor that way shares the pane's
+  full row (or column), the two swap (`session.swap_blocks`), and the opposite
+  arrow undoes it. If the neighbor is larger, the pane moves into it
+  (`session.move_block`) on whichever edge best keeps its row or column. So in
+  ccc | aaa / (ddd | bbb), ddd ← lands under ccc, not beside it. With no
+  neighbor that way, nothing happens.
+- **⌘⌥R, `pane_rotate_split`.** Flips the pane and its split partner between
+  side by side and stacked. It's based on adi's `rotate_split` in the "Rotate /
+  transpose a split" #feedback thread, and refuses when the partner is a group of
+  panes.
 
-- **No preview square.** No overlay API was found, so each press really moves
-  the pane, and the pane is its own preview.
-- **A pause ends the move, not releasing the modifiers.** No release event was
-  found. A gap of 2–3 s (`MOVE_PAUSE_SECONDS`, which `os.time()` only measures
-  in whole seconds) starts a fresh move. Module-level Lua state in `init.lua`
-  does persist between keypresses (confirmed in use).
+Why not the Moestty gesture: without a preview, each press has to commit a real
+move. A version that walked the pane around a target used an invisible "still
+the same move" timer, so the same key did different things depending on timing.
+It wasn't predictable. Nothing found offers a preview overlay or a
+modifier-release event. A key mode could hold the move open, but Rex pins a
+key-hint panel up for as long as any mode is active. "Show key sequence hints"
+doesn't hide it, and an option to is an accepted #feedback request, "Option to
+hide or minimize the persistent key-mode panel". If Moestty's gesture is ever
+wanted, the untried route is a translucent floating layer (`session.new_layer`
+/ `resize_layer`) as the preview, plus a key mode with Enter to commit.
 
-A key mode was tried first and dropped. Inside a mode, a binding must name an
-action, not a Lua function, but a named custom action is fine. The problem is
-that Rex pins a key-hint panel up for as long as any mode is active, and turning
-off "Show key sequence hints" doesn't hide it. An option to hide it is an
-accepted #feedback request, "Option to hide or minimize the persistent key-mode
-panel".
+Unavoidable surprise left, from Rex's binary split tree:
+
+- A move out of a split always hands that space to the pane's partner in the
+  tree, which isn't visible. Two layouts that look the same can stretch
+  differently. Swapping avoids this, which is why swap is the default.
+- Rotate pairs a pane with its tree partner. In a 2×2, the lower-left pane's
+  partner is the upper-left pane if the grid was built column-first, or the
+  lower-right pane if it was built row-first.
+- `move_block` can't take a group of panes as its target.
+  So "full-height pane ← past a stacked column" lands beside one pane of that
+  column. Untried fix: `session.new_split` *can* anchor on a split, so create a
+  placeholder beside the group, `swap_blocks` into it, and close the placeholder.
 
 Related #feedback: "Move pane l/r/u/d should also change split" (active,
 2026-11-01), "moving pane from vertical to horizontal" (deferred), and "Rotate /
-transpose a split" (active). All three only ask to change split orientation.
-None asks for walking the pane around a target.
+transpose a split" (active).
 
 ## Wrapped URLs
 
