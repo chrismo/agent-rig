@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-export ASDF_SUPERDB_VERSION=0.3.0
+export ASDF_SUPERDB_VERSION=0.4.0
 
 # Colors
 BOLD='\033[1m'
@@ -43,21 +43,17 @@ if [[ -n "$wc_config" ]] && [[ -f "$wc_config" ]]; then
     done < <(super -f line -c "unnest repos" "$wc_config" 2>/dev/null)
 
     # Read standup script (optional field)
-    standup_script=$(super -f line -c "grep('standup_script', typeof(this)::string) ? standup_script : ''" "$wc_config")
+    standup_script=$(super -f line -c "values coalesce(ok(this.standup_script), '')" "$wc_config")
     standup_script="${standup_script/#\~/$HOME}"
 
     # Read timezone offset (optional field)
-    tz_offset_hours=$(super -f line -c "grep('tz_offset_hours', typeof(this)::string) ? tz_offset_hours : -6" "$wc_config")
+    tz_offset_hours=$(super -f line -c "values coalesce(ok(this.tz_offset_hours), -6)" "$wc_config")
 
-    # Read github_orgs array (optional). The absence is expressed inside the
-    # query — the field is only named in a branch that a config without it
-    # never takes, since super resolves a reference when it evaluates one, and
-    # `where` doesn't spare an unnest operand from that. Errors are NOT
-    # swallowed here any more: nothing ordinary reaches stderr now, so
-    # anything that does is worth seeing.
+    # Read github_orgs array (optional). stderr is left visible: nothing
+    # ordinary reaches it, so anything that does is worth seeing.
     while IFS= read -r org; do
         [[ -n "$org" ]] && github_orgs+=("$org")
-    done < <(super -f line -c "unnest (['github_orgs'] in fields(this) ? github_orgs : [])" "$wc_config")
+    done < <(super -f line -c "unnest coalesce(ok(this.github_orgs), [])" "$wc_config")
 fi
 
 # Fallback defaults if no config or empty repos
@@ -471,7 +467,7 @@ function search() {
 
     # Search for term in display field, return matches with context
     super -f json -c "
-      put ts:=((timestamp - ${tz_offset_ms})*1000000)::time
+      put ts:=((timestamp - ${tz_offset_ms})*1000000)::timestamp
       | where ts >= now() - '${days}d'::duration
       | where grep('(?i)$(sq_escape "$term")', display)
       | put date:=strftime('%Y-%m-%d %H:%M', ts)
@@ -529,8 +525,8 @@ function diag() {
             has_fields=$(super -f line -c "
               where type == 'user'
               | head 1
-              | values ['sessionId'] in fields(this) and ['timestamp'] in fields(this)
-                  and ['message','content'] in fields(this) and ['gitBranch'] in fields(this)
+              | values not is_error(sessionId) and not is_error(timestamp)
+                  and not is_error(message.content) and not is_error(gitBranch)
             " "$newest_jsonl" 2>/dev/null) || true
             if [[ "$has_fields" != "true" ]]; then
                 echo -e "${BOLD}⚠ DIAG:${RESET} Newest JSONL user message missing expected fields (sessionId/timestamp/message/gitBranch)" >&2
@@ -552,7 +548,7 @@ function diag() {
     # 6. history.jsonl canary: check for sessionId field (added ~Feb 2026)
     if [[ -f "$history_file" ]]; then
         local has_session_id
-        has_session_id=$(super -f line -c "tail 1 | values ['sessionId'] in fields(this)" "$history_file" 2>/dev/null) || true
+        has_session_id=$(super -f line -c "tail 1 | values not is_error(sessionId)" "$history_file" 2>/dev/null) || true
         if [[ "$has_session_id" != "true" ]]; then
             echo -e "${BOLD}⚠ DIAG:${RESET} history.jsonl latest entry missing sessionId field" >&2
             warnings=$((warnings + 1))
@@ -654,7 +650,7 @@ function open_prs() {
     echo "$data" | super -f json -c "
       unnest this
       | put repo := headRepository.name
-      | put review := ['reviewDecision'] in fields(this) ? (reviewDecision != '' ? reviewDecision : 'PENDING') : 'PENDING'
+      | put review := coalesce(nullif(ok(reviewDecision), ''), 'PENDING')
       | put draft := isDraft ? 'draft' : ''
       | put pr := f'#{number}'
       | put title_short := title[0:50]
@@ -706,12 +702,12 @@ function conversations_json() {
     # Filter and sort on updatedAt (last activity); convert UTC to local time using tz_offset_hours
     { collect_session_data "$days"; collect_pi_session_data "$days"; } | super -f json -c "
       where updatedAt >= '${cutoff}'
-      | put local_updated:=updatedAt::time + '${tz_offset_hours}h'::duration
+      | put local_updated:=updatedAt::timestamp + '${tz_offset_hours}h'::duration
       | put date:=strftime('%Y-%m-%d', local_updated)
       | put time:=strftime('%H:%M', local_updated)
-      | put started:=strftime('%Y-%m-%d', created::time + '${tz_offset_hours}h'::duration)
+      | put started:=strftime('%Y-%m-%d', created::timestamp + '${tz_offset_hours}h'::duration)
       | put first_prompt:=replace(firstPrompt[0:300], '\\n', ' ')
-      | put conv_summary:=replace(['summary'] in fields(this) ? summary : '', '\\n', ' ')
+      | put conv_summary:=replace(coalesce(ok(summary), ''), '\\n', ' ')
       | sort -updatedAt
       | cut sessionId, date, time, started, project, messageCount, gitBranch, first_prompt, conv_summary, source
     " - 2>/dev/null
