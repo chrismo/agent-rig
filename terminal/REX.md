@@ -49,8 +49,14 @@ Instead, `terminal/rex/panes.lua` adds a swap/move-into on ⌘⌥⇧+arrow and a
 push into the neighbor's row or column on ⌥⇧+arrow (2026-11-01). ⌘⌃ was ruled
 out for push because the MBP keyboard can't register caps+A+F+J, and the swap
 chord already uses every finger (see brain's
-`keyboarding/physical-keyboard-limitations.md`). For flipping a split between
-side by side and stacked, use Rex's built-in Rotate Split.
+`keyboarding/physical-keyboard-limitations.md`). Push covers flipping a split
+between side by side and stacked, so a separate rotate was dropped (2026-11-01).
+
+Rex has no native rotate. `pane_rotate_split` was ours, written after adi's
+`rotate_split` in the "Rotate / transpose a split" #feedback thread, and it was
+dropped for push, not for anything built in. It showed in the command palette
+because every `rex.action` does — which is how it got mistaken for native. Bind
+`rex.bind(key, fn)` when an action should stay off the palette.
 
 Left as good enough: push has a glitch or two that haven't been looked into.
 
