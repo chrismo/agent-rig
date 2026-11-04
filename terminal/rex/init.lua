@@ -24,6 +24,8 @@ rex.bind("cmd+alt+0", "pane.balance")
 rex.bind("cmd+up", "client.prompt.previous")
 rex.bind("cmd+down", "client.prompt.next")
 
+rex.bind("alt+shift+pageup", "client.tab.previous")
+rex.bind("alt+shift+pagedown", "client.tab.next")
 rex.bind("cmd+shift+pageup", "client.tab.move.backward")
 rex.bind("cmd+shift+pagedown", "client.tab.move.forward")
 rex.bind("cmd+shift+l", "client.tab.rename")
