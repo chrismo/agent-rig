@@ -30,7 +30,7 @@ the box before agent-rig intervenes.
 | `move_split_to_new_tab` | `pane.move_to_new_tab` |
 | `move_tab_to_split` | `pane.move_to_tab…` (picker, starts from the pane) |
 | `mark_tab` + `move_marked_tabs_to_new_window` | `client.tab.move_to_new_window`, one tab at a time — **no marks** |
-| `toggle_tab_switcher` | nothing equivalent found yet |
+| `toggle_tab_switcher` | command palette searches tabs across sessions; see below |
 
 Rex extras: floating panes (`pane.float`), detached blocks that keep running,
 server-side sessions, key modes and sequences, `rex move` / `rex swap` from the
@@ -85,6 +85,25 @@ Unavoidable surprise left, from Rex's binary split tree:
 
 Related pane-movement requests are tracked in [Feedback threads](#feedback-threads).
 
+## Sessions, tabs and panes
+
+- To create a named session without first getting a random name: ⌘K, type the
+  name, then Enter. ⇧⌘N creates a new session instead; don't use it to submit
+  the name in the picker.
+- The command palette (⇧⌘P) can search tab names across sessions. For panes,
+  use ⌥⌘+arrow to focus directionally or ⌘[ / ⌘] to cycle; no searchable pane
+  picker found. ⌘1–9 selects tabs and ⌃Tab cycles them.
+- Settings → Integrations → Agent Behavior → "Let agents name sessions" lets
+  agents label sessions for their work. Useful for a single agent task, but
+  multiple agents can rename the same session, and people report the setting
+  not applying to alternate Claude config directories.
+- A running tab or pane can't currently be moved to another session via the
+  documented CLI/API, so the agent skill can't do it either. `rex window move`
+  reorders within a session; `rex move` requires both panes in the same session.
+  "Move Tab to New Window" opens another app window, not a new session. Starting
+  again in the destination loses terminal state and scrollback. See the tracked
+  cross-session movement request below.
+
 ## Sidebar vanished: a two-finger swipe
 
 A two-finger horizontal trackpad swipe hides and shows the sidebar (confirmed by
@@ -136,7 +155,7 @@ Related font requests and bugs are listed in [Feedback threads](#feedback-thread
 A curated list of Rex Beta feedback threads mentioned in these notes—not
 necessarily every thread followed in Discord. The MCP can search/list community
 feedback, but doesn't expose the signed-in user's personal follow list. Statuses
-below were checked 2026-11-02 and may change.
+below were checked 2026-11-02 unless otherwise noted and may change.
 
 ### Accepted
 
@@ -145,6 +164,7 @@ below were checked 2026-11-02 and may change.
 
 ### Active
 
+- [Move a pane to a new (or existing) session](https://discord.com/channels/1546797889009881158/1563606338615902309) — feature request, also asks for moving whole tabs across sessions while keeping programs running; active as of 2026-11-04.
 - [Move pane l/r/u/d should also change split](https://discord.com/channels/1546797889009881158/1566477829627977738) — feature request.
 - [Rotate / transpose a split](https://discord.com/channels/1546797889009881158/1559678526943137813) — feature request.
 - [URL parsing error caused by text wrapping](https://discord.com/channels/1546797889009881158/1563062398829723658) — bug; wrapped URL is only linked through the first line.
