@@ -77,6 +77,7 @@ echo ""
 #     which would write an empty settings.json.
 # When retiring a hook event type from agent-rig, ADD it to the `drop` list so it
 # disappears from existing settings.json on next install.
+# SessionStart is replaced wholesale except Rex's own entry (`rex skill setup`).
 # tab-status --title sets the Ghostty tab title itself (resolves the pane's pts
 # and uses Ghostty's set_tab_title action via osascript). It must NOT redirect
 # to /dev/tty: hooks run with no controlling terminal, so opening /dev/tty fails
@@ -141,7 +142,7 @@ new_settings=$(
         command: '${LEMMA_BRIEF_HOOK}',
         timeout: 10
       }]
-    }]
+    }, ...[unnest this.hooks.SessionStart | where grep('rex __internal', this.hooks[0].command)]]
   }}" "$SETTINGS_FILE"
 )
 

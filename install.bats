@@ -159,6 +159,27 @@ EOF
   [ "$matcher" = "Bash" ]
 }
 
+@test "hooks: Rex's own SessionStart hook survives re-install, once" {
+  cat > "$CLAUDE_DIR/settings.json" <<'EOF'
+{
+  "hooks": {
+    "SessionStart": [
+      {"hooks": [{"type": "command", "timeout": 5, "command": "/bin/sh -c 'rex __internal session-start --agent claude --feature-session-naming=false 2>/dev/null || true'"}]}
+    ]
+  }
+}
+EOF
+  run_installer
+  [ "$status" -eq 0 ]
+  run_installer
+  [ "$status" -eq 0 ]
+  local count rex_count
+  count=$(settings_get 'len(this.hooks.SessionStart)')
+  [ "$count" -eq 3 ]
+  rex_count=$(settings_get 'len([unnest this.hooks.SessionStart | unnest this.hooks | where grep("rex __internal", command)])')
+  [ "$rex_count" -eq 1 ]
+}
+
 @test "hooks: user-managed hook event types are preserved" {
   cat > "$CLAUDE_DIR/settings.json" <<'EOF'
 {
