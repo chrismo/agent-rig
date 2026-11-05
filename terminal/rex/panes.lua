@@ -138,6 +138,5 @@ rex.action{
 }
 
 for _, dir in ipairs({ "up", "down", "left", "right" }) do
-  rex.bind("cmd+alt+shift+" .. dir, "pane_move_dir", { direction = dir })
-  rex.bind("alt+shift+" .. dir, "pane_push_dir", { direction = dir })
+  rex.bind("shift+alt+cmd+" .. dir, "pane_move_dir", { direction = dir })
 end

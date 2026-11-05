@@ -1,32 +1,31 @@
 -- DO NOT MODIFY IN PLACE. Change in agent-rig (terminal/rex/) and run install.sh,
 -- then: rex config check && rex config reload
 
-rex.bind("cmd+alt+s", "pane.split", { direction = "right" })
-rex.bind("cmd+alt+ctrl+s", "pane.split", { direction = "down" })
-rex.bind("cmd+alt+m", "pane.focus_next")
+-- Modifiers in caps-layer home-row order: ctrl, shift, alt, cmd. Layout: terminal/REX.md.
 
-rex.bind("cmd+alt+up", "pane.focus", { direction = "up" })
-rex.bind("cmd+alt+down", "pane.focus", { direction = "down" })
-rex.bind("cmd+alt+left", "pane.focus", { direction = "left" })
-rex.bind("cmd+alt+right", "pane.focus", { direction = "right" })
+rex.bind("alt+cmd+s", "pane.split", { direction = "right" })
+rex.bind("ctrl+alt+cmd+s", "pane.split", { direction = "down" })
+rex.bind("alt+cmd+m", "pane.focus_next")
 
--- amount is a percentage of the split (default 5), not Ghostty's pixels.
-rex.bind("cmd+shift+up", "pane.resize", { direction = "up" })
-rex.bind("cmd+shift+down", "pane.resize", { direction = "down" })
-rex.bind("cmd+shift+left", "pane.resize", { direction = "left" })
-rex.bind("cmd+shift+right", "pane.resize", { direction = "right" })
+for _, dir in ipairs({ "up", "down", "left", "right" }) do
+  rex.bind("shift+alt+" .. dir, "pane.focus", { direction = dir })
+  -- amount is a percentage of the split (default 5), not Ghostty's pixels.
+  rex.bind("shift+cmd+" .. dir, "pane.resize", { direction = dir })
+end
 
 require("panes")
 
-rex.bind("cmd+alt+z", "pane.zoom")
-rex.bind("cmd+alt+0", "pane.balance")
+rex.bind("alt+cmd+z", "pane.zoom")
+rex.bind("alt+cmd+0", "pane.balance")
 
 rex.bind("cmd+up", "client.prompt.previous")
 rex.bind("cmd+down", "client.prompt.next")
 
-rex.bind("alt+shift+pageup", "client.tab.previous")
-rex.bind("alt+shift+pagedown", "client.tab.next")
-rex.bind("cmd+shift+pageup", "client.tab.move.backward")
-rex.bind("cmd+shift+pagedown", "client.tab.move.forward")
-rex.bind("cmd+shift+r", "client.tab.rename")
-rex.bind("cmd+shift+b", "client.tab.move_to_new_window")
+rex.bind("alt+cmd+left", "client.tab.previous")
+rex.bind("alt+cmd+up", "client.tab.previous")
+rex.bind("alt+cmd+right", "client.tab.next")
+rex.bind("alt+cmd+down", "client.tab.next")
+rex.bind("alt+cmd+pageup", "client.tab.move.backward")
+rex.bind("alt+cmd+pagedown", "client.tab.move.forward")
+rex.bind("shift+cmd+r", "client.tab.rename")
+rex.bind("shift+cmd+b", "client.tab.move_to_new_window")
