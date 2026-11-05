@@ -95,10 +95,10 @@ but ⌃Tab and ⇧⌘[ ] aren't. Modifiers are written in that layer's order, �
 
 | Chord | + arrows | + PgUp/PgDn |
 |---|---|---|
-| ⇧⌥ | focus pane | free |
+| ⇧⌥ | focus pane | collapse (PgUp) / expand (PgDn) session |
 | ⇧⌥⌘ | swap pane (`pane_move_dir`) | push pane: PgUp ↑, PgDn → (plus m ←, v ↓) |
 | ⇧⌘ | resize pane | free |
-| ⌥⌘ | ↑↓ previous/next tab, ← collapse / → expand session | move tab |
+| ⌥⌘ | ↑↓ previous/next tab, ←→ previous/next session | move tab |
 
 Panes are the ⇧ chords and tabs are ⌥⌘. There are five arrow functions (focus,
 swap, push, resize, tabs) and only four arrow chords without ⌃, which is why push
@@ -122,9 +122,22 @@ because a pane's partner in the tree can change.
 
 Next/previous tab crosses into the neighboring session and wraps at the ends
 (observed by chrismo, 2026-11-04). With mostly one-tab sessions that already walks
-sessions, so ⌥⌘←→ went to collapse/expand rather than next/previous session.
-Collapsing hides a session's tabs, which makes the ⌘1–9 numbers easier to keep
-track of.
+sessions. Collapsing a session only changes the sidebar, not the tabs, but it
+keeps the ⌘1–9 numbers easier to track.
+
+Collapse/expand first sat on ⌥⌘←→ and had a dead end: once every session was
+collapsed, ⌥⌘↑↓ couldn't reach another session and expand only works on the
+current one. No API reports which sessions are collapsed, so an action can't
+detect that. Switching sessions and folding them now use separate chords: with
+every session collapsed, ⌥⌘→ still goes to the next session and expands it
+(observed by chrismo, 2026-11-04).
+
+Tried and dropped: an accordion on ⌥⌘←→ (go to the previous/next session, expand
+it, collapse the rest). It worked, but keeping exactly one session open was too
+big a change; chrismo wants to choose what stays expanded. The deferred #feedback
+request "Auto-collapse inactive sessions in the sidebar" asks for that built in.
+The active bug "Show Activity forgets session collapse state when toggled" means
+⌘. can lose manual collapses.
 
 Open: whether next/previous tab and ⌘1–9 follow the ⌘. Activity filter. Neither
 the docs nor #feedback say. Rex's default ⌥⌘W (Close Tab) now sits beside the tab chords;

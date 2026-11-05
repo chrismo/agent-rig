@@ -46,10 +46,16 @@ LUA
     bound("alt+cmd+down", "client.tab.next")'
 }
 
-@test "opt-cmd left and right collapse and expand the session" {
+@test "opt-cmd left and right select the previous and next session" {
   check_bindings '
-    bound("alt+cmd+left", "session.collapse")
-    bound("alt+cmd+right", "session.expand")'
+    bound("alt+cmd+left", "session.previous")
+    bound("alt+cmd+right", "session.next")'
+}
+
+@test "shift-opt page keys collapse and expand the session" {
+  check_bindings '
+    bound("shift+alt+pageup", "session.collapse")
+    bound("shift+alt+pagedown", "session.expand")'
 }
 
 @test "opt-cmd page keys move the tab" {
@@ -89,9 +95,8 @@ LUA
 
 @test "the old tab page keys are unassigned" {
   check_bindings '
-    unbound("shift+alt+pageup")
-    unbound("shift+alt+pagedown")
     unbound("shift+cmd+pageup")
     unbound("shift+cmd+pagedown")'
 }
+
 
