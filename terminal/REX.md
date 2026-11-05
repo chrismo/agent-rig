@@ -26,7 +26,7 @@ the box before agent-rig intervenes.
 
 | Moestty / Ghostty | Rex |
 |---|---|
-| `move_split` | custom `pane_move_dir` and `pane_push_dir` actions in `panes.lua`, see below |
+| `move_split` | custom `pane_move_dir` (swap) and `pane_aim` (live-move mode) actions in `panes.lua`, see below |
 | `move_split_to_new_tab` | `pane.move_to_new_tab` |
 | `move_tab_to_split` | `pane.move_to_tab…` (picker, starts from the pane) |
 | `mark_tab` + `move_marked_tabs_to_new_window` | `client.tab.move_to_new_window`, one tab at a time — **no marks** |
@@ -45,8 +45,9 @@ pane's four edges (top/bottom/left/right). Releasing the modifiers drops the
 split there, so one gesture can also change split orientation. Rex's built-in
 `pane.move` just swaps with the neighbor.
 
-Instead, `terminal/rex/panes.lua` adds a swap/move-into on ⇧⌥⌘+arrow and a
-push into the neighbor's row or column on ⇧⌥+arrow (2026-11-01; see
+Instead, `terminal/rex/panes.lua` adds a swap/move-into on ⇧⌥⌘+arrow and,
+since 2026-11-05, an aim mode on ⇧⌥+arrow (below). Before that, ⇧⌥+arrow was a
+push into the neighbor's row or column (2026-11-01; see
 [Shortcut layout](#shortcut-layout) for its detour on 2026-11-04). ⌘⌃ was ruled
 out for push because the MBP keyboard can't register caps+A+F+J, and the swap
 chord already uses every finger (see brain's
@@ -59,25 +60,45 @@ dropped for push, not for anything built in. It showed in the command palette
 because every `rex.action` does — which is how it got mistaken for native. Bind
 `rex.bind(key, fn)` when an action should stay off the palette.
 
-Left as good enough: push has a glitch or two that haven't been looked into.
+Aim mode (2026-11-05) is the closest to Moestty's gesture. ⇧⌥+arrow enters an
+exclusive key mode (`rex.mode`) and moves the pane, live, to the nearest edge
+spot of another pane that way. Arrows keep walking it, Enter keeps it, and Esc
+undoes each step, last first. The move is the preview, because nothing else
+showed:
 
-Why not the Moestty gesture: without a preview, each press has to commit a real
-move. A version that walked the pane around a target used an invisible "still
-the same move" timer, so the same key did different things depending on timing.
-It wasn't predictable. Nothing found offers a preview overlay or a
-modifier-release event. A key mode could hold the move open, but Rex pins a
-key-hint panel up for as long as any mode is active. "Show key sequence hints"
-doesn't hide it; the accepted request to hide or minimize that panel is tracked
-in [Feedback threads](#feedback-threads). If Moestty's gesture is ever wanted,
-the untried route is a translucent floating layer (`session.new_layer` /
-`resize_layer`) as the preview, plus a key mode with Enter to commit.
+- `session.set_block_label` sets the block's label, but the pane header shows
+  the terminal's title, and no API sets that.
+- The terminal's `set_theme` (background tint) changed nothing, whether called
+  from the CLI or from a palette action.
+- A floating layer placed with `session.new_layer` / `resize_layer` should work
+  as an overlay, but chrismo turned it down.
+
+Lessons from the walk:
+
+- Landing spots computed once, at the start, made later presses unpredictable
+  once the layout had moved, so each press now starts from where the pane is.
+- Swap spots threw the other pane back to where the moved one started, so the
+  walk never swaps; ⇧⌥⌘ still does.
+- An edge that faces the moving pane across a matching span would only shuffle
+  sizes, so it's skipped.
+- Esc can only get close when the pane started beside a group of panes
+  (`move_block` limit below), and split ratios may shift.
+- Config Lua state survives between action calls (checked 2026-11-05), so the
+  mode keeps its history in a local.
+
+Rex pins a key-hint panel up for as long as any mode is active. "Show key
+sequence hints" doesn't hide it; the accepted request to hide or minimize that
+panel is tracked in [Feedback threads](#feedback-threads), and hadn't shipped as
+of 2026-11-05. Before aim mode, a version without a mode walked the pane with an
+invisible "still the same move" timer, so the same key did different things
+depending on timing. It wasn't predictable.
 
 Unavoidable surprise left, from Rex's binary split tree:
 
 - A move out of a split always hands that space to the pane's partner in the
   tree, which isn't visible. Two layouts that look the same can stretch
   differently.
-- Push leaves a hole that the tree partner fills. In a column-first 2×2, TR ↓
+- A move leaves a hole that the tree partner fills. In a column-first 2×2, TR ↓
   makes three full-height columns, not one-plus-three.
 - `move_block` can't take a group of panes as its target.
   So "full-height pane ← past a stacked column" lands beside one pane of that
@@ -97,7 +118,7 @@ are Dvorak letters, sitting below ← and → the way PgUp/PgDn sit above.
 |---|---|---|---|
 | ⌥⌘ | focus | previous/next tab | previous/next session |
 | ⇧⌥⌘ | swap (`pane_move_dir`) | move tab | move session (`session_move`) |
-| ⇧⌥ | push (`pane_push_dir`) | free | collapse then previous / expand |
+| ⇧⌥ | aim mode (`pane_aim`) | free | collapse then previous / expand |
 | ⇧⌘ | resize | free | — |
 
 The key cluster names the thing, the chord names the verb: ⌥⌘ goes to it, ⇧⌥⌘
@@ -109,7 +130,8 @@ Ruled out along the way:
 - ⌃ chords. With any other modifier, ⌃ jams the MBP keyboard on the caps layer:
   ⌃⌘ (push note above), and ⌃⇧, ⌃⌥ and ⌃⇧⌥ (all tried, 2026-11-04). ⌃+arrow
   alone hits macOS defaults.
-- Key modes: not wanted, partly because Rex pins the key-hint panel while one is active.
+- Key modes for everyday chords: not wanted, partly because Rex pins the key-hint
+  panel while one is active. Aim mode is the one exception.
 - ⇧+arrow alone would take selection away from nvim and other TUIs.
 - `pane_rotate` (ff054c4), a quarter turn around the pane's tree partner. Not the
   move wanted. Lessons: `move_block` can't anchor on a group, and a turn back
