@@ -47,8 +47,8 @@ split there, so one gesture can also change split orientation. Rex's built-in
 
 Instead, `terminal/rex/panes.lua` adds a swap/move-into on ⇧⌥⌘+arrow and a
 push into the neighbor's row or column, which had ⇧⌥+arrow from 2026-11-01 until
-pane focus took that chord (2026-11-04, see [Shortcut layout](#shortcut-layout)).
-Push is unbound for now and still runs from the command palette. ⌘⌃ was ruled
+pane focus took that chord (2026-11-04). It now sits on the corner keys around the
+arrows, see [Shortcut layout](#shortcut-layout). ⌘⌃ was ruled
 out for push because the MBP keyboard can't register caps+A+F+J, and the swap
 chord already uses every finger (see brain's
 `keyboarding/physical-keyboard-limitations.md`). Push covers flipping a split
@@ -96,7 +96,7 @@ but ⌃Tab and ⇧⌘[ ] aren't. Modifiers are written in that layer's order, �
 | Chord | + arrows | + PgUp/PgDn |
 |---|---|---|
 | ⇧⌥ | focus pane | free |
-| ⇧⌥⌘ | swap pane (`pane_move_dir`) | rotate pane counterclockwise / clockwise (`pane_rotate`) |
+| ⇧⌥⌘ | swap pane (`pane_move_dir`) | push pane: PgUp ↑, PgDn → (plus m ←, v ↓) |
 | ⇧⌘ | resize pane | free |
 | ⌥⌘ | previous (←↑) / next (→↓) tab | move tab |
 
@@ -106,23 +106,19 @@ lost its arrows. Ruled out for the fifth:
 
 - ⌃ is out. With any other modifier it jams the MBP keyboard on the caps layer:
   ⌃⌘ (push note above), and ⌃⇧, ⌃⌥ and ⌃⇧⌥ (all tried for push, 2026-11-04).
-  ⌃+arrow alone hits macOS defaults. Push stays on the command palette.
+  ⌃+arrow alone hits macOS defaults.
 - Key modes: not wanted, partly because Rex pins the key-hint panel while one is active.
 - ⇧+arrow alone would take selection away from nvim and other TUIs.
 
-Push's main job was flipping side by side ↔ stacked, so `pane_rotate` replaced it.
-It sits beside swap on ⇧⌥⌘, the chord for moving a pane. It moves the pane a quarter turn around its tree
-partner. `move_block` can't anchor on a group, so when the partner is a group it
-turns around the group's pane that touches this one and lies furthest toward the
-target side instead. Every press is one move, with no placeholder pane and no refusals.
-Ruled out: a placeholder pane beside the group (too slow and visible) and refusing
-group partners. What that costs:
+Push went to the four keys at the corners of the caps-layer arrows instead: PgUp
+and PgDn above, Dvorak m and v below, with ⇧⌥⌘ like swap.
+Each corner turns one step clockwise into a direction: PgUp ↑, PgDn →, v ↓, m ←.
 
-- Beside a row of panes (A│B│C, rotate A), A joins B's column instead of
-  spanning B and C, the same result push gave.
-- Undo isn't guaranteed. After A beside a B/C stack turns above it, A's partner is B
-  alone, so turning back gives A│B over C, not the original layout (confirmed on the
-  live server, 2026-11-04).
+Before that, a `pane_rotate` on ⇧⌥⌘PgUp/PgDn turned the pane a quarter turn around
+its tree partner (2026-11-04, ff054c4). It was dropped for corner-key push. Two
+lessons from it: `move_block` can't anchor on a group, so a turn next to a group
+had to settle for one of its panes, and a turn back didn't always undo a turn,
+because a pane's partner in the tree can change.
 
 Open: whether next/previous tab and ⌘1–9 follow the ⌘. Activity filter, and
 whether they cross sessions when Activity is grouped by session. Neither the docs
