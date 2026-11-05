@@ -8,6 +8,9 @@ personal Ghostty fork in `~/modev/ghostty`. Started 2026-10-30 on Rex Beta 0.1.0
 
 - Config: `terminal/rex/init.lua`, which `require`s `panes.lua` and `sessions.lua`. Each file is
   linked into `~/.config/rex/` by `install.sh`. Apply with `rex config check && rex config reload`.
+  `rex config check` doesn't compare a binding's args with what its action declares. The client
+  does that when it loads the keymap and reports mismatches as problems, so run
+  `bats terminal/rex-keybindings.bats` first. It does the same check.
 - Shortcuts set in the app's settings override `init.lua`. They're stored in
   `~/Library/Application Support/com.superlogical.rex/Shortcuts/shortcuts.json`
   (per a #feedback thread, not checked here).
