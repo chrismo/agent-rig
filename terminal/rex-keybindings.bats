@@ -111,10 +111,10 @@ LUA
     bound("shift+alt+cmd+v", "session_move", "down")'
 }
 
-@test "shift-opt m and v collapse (then go up) and expand the session" {
+@test "shift-opt m and v collapse the session, then go up or down" {
   check_bindings '
     bound("shift+alt+m", "session_collapse_previous")
-    bound("shift+alt+v", "session.expand")'
+    bound("shift+alt+v", "session_collapse_next")'
 }
 
 @test "shift-opt and shift-cmd page keys are unassigned" {
@@ -155,6 +155,12 @@ LUA
   run_session_action session_collapse_previous "" s2
   [ "$status" -eq 0 ]
   [ "$output" = "session.collapse, session.previous" ]
+}
+
+@test "collapse-next folds this session before moving down" {
+  run_session_action session_collapse_next "" s2
+  [ "$status" -eq 0 ]
+  [ "$output" = "session.collapse, session.next" ]
 }
 
 @test "move session up puts it before the one above" {

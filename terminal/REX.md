@@ -123,7 +123,7 @@ are Dvorak letters, sitting below ← and → the way PgUp/PgDn sit above.
 |---|---|---|---|
 | ⌥⌘ | focus | previous/next tab | previous/next session |
 | ⇧⌥⌘ | swap (`pane_move_dir`) | move tab | move session (`session_move`) |
-| ⇧⌥ | aim mode (`pane_aim`) | free | collapse then previous / expand |
+| ⇧⌥ | aim mode (`pane_aim`) | free | collapse then previous / next |
 | ⇧⌘ | resize | free | — |
 
 The key cluster names the thing, the chord names the verb: ⌥⌘ goes to it, ⇧⌥⌘
@@ -151,8 +151,10 @@ Next/previous tab crosses into the neighboring session and wraps at the ends
 but it keeps the ⌘1–9 numbers easier to track. Collapse and session switching need
 separate keys: with every session collapsed, tab switching can't leave the current
 session, but next/previous session still can, and expands the session it lands on
-(observed by chrismo). No API reports which sessions are collapsed, so "go to the
-previous *expanded* session" is a TODO in `sessions.lua`. The active bug "Show
+(observed by chrismo). That same auto-expand left a plain expand key with nothing
+to do, so ⇧⌥v became collapse-then-next (2026-11-05). No API reports which sessions
+are collapsed, so "go to the previous/next *expanded* session" is a TODO in
+`sessions.lua`. The active bug "Show
 Activity forgets session collapse state when toggled" means ⌘. can lose collapses.
 
 Moving a session uses the server's `session.move` through `rex.call`;

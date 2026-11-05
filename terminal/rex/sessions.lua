@@ -1,18 +1,20 @@
 -- DO NOT MODIFY IN PLACE. Change in agent-rig (terminal/rex/) and run install.sh,
 -- then: rex config check && rex config reload
 
--- TODO: go to the previous *expanded* session, wrapping around. Rex exposes no
--- collapse state (no API field, no event), so track it in this file: record what
--- these keys collapse/expand, then session.select the target from session.list.
+-- TODO: go to the previous/next *expanded* session, wrapping around. Rex exposes
+-- no collapse state (no API field, no event), so track it in this file: record
+-- what these keys collapse, then session.select the target from session.list.
 -- Sidebar clicks, ⌘K and auto-expand on entering a session go unseen.
-rex.action{
-  name  = "session_collapse_previous",
-  title = "Collapse Session and Go to Previous",
-  run   = function()
-    rex.client.queue("session.collapse")
-    rex.client.queue("session.previous")
-  end,
-}
+for _, go in ipairs({ "previous", "next" }) do
+  rex.action{
+    name  = "session_collapse_" .. go,
+    title = "Collapse Session and Go to " .. go:sub(1, 1):upper() .. go:sub(2),
+    run   = function()
+      rex.client.queue("session.collapse")
+      rex.client.queue("session." .. go)
+    end,
+  }
+end
 
 rex.action{
   name        = "session_move",
@@ -45,4 +47,4 @@ rex.bind("alt+cmd+v", "session.next")
 rex.bind("shift+alt+cmd+m", "session_move", { direction = "up" })
 rex.bind("shift+alt+cmd+v", "session_move", { direction = "down" })
 rex.bind("shift+alt+m", "session_collapse_previous")
-rex.bind("shift+alt+v", "session.expand")
+rex.bind("shift+alt+v", "session_collapse_next")
