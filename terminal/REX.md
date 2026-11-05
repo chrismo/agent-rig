@@ -104,7 +104,9 @@ Panes are the ⇧ chords and tabs are ⌥⌘. There are five arrow functions (fo
 swap, push, resize, tabs) and only four arrow chords without ⌃, which is why push
 lost its arrows. Ruled out for the fifth:
 
-- ⌃⌘ jams on the MBP keyboard (see the push note above). ⌃⇧ and ⌃⌥ are untested.
+- ⌃ is out. With any other modifier it jams the MBP keyboard on the caps layer:
+  ⌃⌘ (push note above), and ⌃⇧, ⌃⌥ and ⌃⇧⌥ (all tried for push, 2026-11-04).
+  ⌃+arrow alone hits macOS defaults. Push stays on the command palette.
 - Key modes: not wanted, partly because Rex pins the key-hint panel while one is active.
 - ⇧+arrow alone would take selection away from nvim and other TUIs.
 
