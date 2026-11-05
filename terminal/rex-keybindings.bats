@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# Loads init.lua and the real panes.lua against a stub rex, then runs the Lua
+# Loads init.lua (and what it requires) against a stub rex, then runs the Lua
 # assertions in $1. Keys are normalized so modifier order doesn't matter, as in Rex.
 check_bindings() {
   run lua - "$BATS_TEST_DIRNAME/rex" "$1" <<'LUA'
@@ -40,34 +40,19 @@ LUA
   [ "$status" -eq 0 ]
 }
 
-@test "opt-cmd up and down select the previous and next tab" {
-  check_bindings '
-    bound("alt+cmd+up", "client.tab.previous")
-    bound("alt+cmd+down", "client.tab.next")'
-}
+# Arrows act on panes.
 
-@test "opt-cmd left and right select the previous and next session" {
-  check_bindings '
-    bound("alt+cmd+left", "session.previous")
-    bound("alt+cmd+right", "session.next")'
-}
-
-@test "shift-opt page keys collapse (then go up) and expand the session" {
-  check_bindings '
-    bound("shift+alt+pageup", "session_collapse_previous")
-    bound("shift+alt+pagedown", "session.expand")'
-}
-
-@test "opt-cmd page keys move the tab" {
-  check_bindings '
-    bound("alt+cmd+pageup", "client.tab.move.backward")
-    bound("alt+cmd+pagedown", "client.tab.move.forward")'
-}
-
-@test "shift-opt arrows focus the pane that way" {
+@test "opt-cmd arrows focus the pane that way" {
   check_bindings '
     for _, d in ipairs({ "up", "down", "left", "right" }) do
-      bound("shift+alt+" .. d, "pane.focus", d)
+      bound("alt+cmd+" .. d, "pane.focus", d)
+    end'
+}
+
+@test "shift-opt arrows push the pane that way" {
+  check_bindings '
+    for _, d in ipairs({ "up", "down", "left", "right" }) do
+      bound("shift+alt+" .. d, "pane_push_dir", d)
     end'
 }
 
@@ -85,37 +70,100 @@ LUA
     end'
 }
 
-@test "shift-opt-cmd corner keys push the pane" {
+# PgUp/PgDn act on tabs, m/v on sessions: opt-cmd goes, shift-opt-cmd moves.
+
+@test "opt-cmd page keys select the previous and next tab" {
   check_bindings '
-    bound("shift+alt+cmd+pageup", "pane_push_dir", "up")
-    bound("shift+alt+cmd+pagedown", "pane_push_dir", "right")
-    bound("shift+alt+cmd+m", "pane_push_dir", "left")
-    bound("shift+alt+cmd+v", "pane_push_dir", "down")'
+    bound("alt+cmd+pageup", "client.tab.previous")
+    bound("alt+cmd+pagedown", "client.tab.next")'
 }
 
-@test "the old tab page keys are unassigned" {
+@test "opt-cmd m and v select the previous and next session" {
   check_bindings '
+    bound("alt+cmd+m", "session.previous")
+    bound("alt+cmd+v", "session.next")'
+}
+
+@test "shift-opt-cmd page keys move the tab" {
+  check_bindings '
+    bound("shift+alt+cmd+pageup", "client.tab.move.backward")
+    bound("shift+alt+cmd+pagedown", "client.tab.move.forward")'
+}
+
+@test "shift-opt-cmd m and v move the session" {
+  check_bindings '
+    bound("shift+alt+cmd+m", "session_move", "up")
+    bound("shift+alt+cmd+v", "session_move", "down")'
+}
+
+@test "shift-opt m and v collapse (then go up) and expand the session" {
+  check_bindings '
+    bound("shift+alt+m", "session_collapse_previous")
+    bound("shift+alt+v", "session.expand")'
+}
+
+@test "shift-opt and shift-cmd page keys are unassigned" {
+  check_bindings '
+    unbound("shift+alt+pageup")
+    unbound("shift+alt+pagedown")
     unbound("shift+cmd+pageup")
     unbound("shift+cmd+pagedown")'
 }
 
-
-
-@test "collapse-previous folds this session before moving up" {
-  run lua - "$BATS_TEST_DIRNAME/rex" <<'LUA'
-local dir = arg[1]
+# Runs session action $1 with direction $2 against stub sessions s1..s4, the
+# current one being $3. Prints the queued client actions and any session.move.
+run_session_action() {
+  run lua - "$BATS_TEST_DIRNAME/rex" "$1" "$2" "$3" <<'LUA'
+local dir, name, direction, current = arg[1], arg[2], arg[3], arg[4]
 package.path = dir .. "/?.lua;" .. package.path
-local actions, queued = {}, {}
+local actions, out = {}, {}
 rex = {
   bind = function() end,
   action = function(def) actions[def.name] = def end,
-  client = { queue = function(name) queued[#queued + 1] = name end },
+  client = { queue = function(n) out[#out + 1] = n end },
+  -- Like Rex: session.list and session.move are server calls, not rex.session methods.
+  call = function(method, args)
+    if method == "session.list" then return { sessions = { { session_id = "s1" }, { session_id = "s2" }, { session_id = "s3" }, { session_id = "s4" } } } end
+    assert(method == "session.move", method)
+    out[#out + 1] = "move " .. tostring(args.session_id) .. " before " .. tostring(args.before_session_id)
+    return {}
+  end,
 }
 dofile(dir .. "/init.lua")
-actions.session_collapse_previous.run({}, {})
-local got = table.concat(queued, " ")
-assert(got == "session.collapse session.previous", "got " .. got)
+actions[name].run({ session_id = current }, { direction = direction })
+print(table.concat(out, ", "))
 LUA
-  echo "$output"
+}
+
+@test "collapse-previous folds this session before moving up" {
+  run_session_action session_collapse_previous "" s2
   [ "$status" -eq 0 ]
+  [ "$output" = "session.collapse, session.previous" ]
+}
+
+@test "move session up puts it before the one above" {
+  run_session_action session_move up s3
+  [ "$status" -eq 0 ]
+  [ "$output" = "move s3 before s2" ]
+}
+
+@test "move session down puts it before the one two below" {
+  run_session_action session_move down s2
+  [ "$status" -eq 0 ]
+  [ "$output" = "move s2 before s4" ]
+}
+
+@test "move session down from next to last sends it to the end" {
+  run_session_action session_move down s3
+  [ "$status" -eq 0 ]
+  [ "$output" = "move s3 before nil" ]
+}
+
+@test "move session past either end does nothing" {
+  run_session_action session_move up s1
+  [ "$status" -eq 0 ]
+  [ "$output" = "" ]
+  run_session_action session_move down s4
+  [ "$status" -eq 0 ]
+  [ "$output" = "" ]
 }

@@ -139,9 +139,5 @@ rex.action{
 
 for _, dir in ipairs({ "up", "down", "left", "right" }) do
   rex.bind("shift+alt+cmd+" .. dir, "pane_move_dir", { direction = dir })
+  rex.bind("shift+alt+" .. dir, "pane_push_dir", { direction = dir })
 end
--- Push sits on the corners around the caps-layer arrows: pgup pgdn above, m v below.
-rex.bind("shift+alt+cmd+pageup", "pane_push_dir", { direction = "up" })
-rex.bind("shift+alt+cmd+pagedown", "pane_push_dir", { direction = "right" })
-rex.bind("shift+alt+cmd+m", "pane_push_dir", { direction = "left" })
-rex.bind("shift+alt+cmd+v", "pane_push_dir", { direction = "down" })

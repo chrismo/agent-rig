@@ -6,7 +6,7 @@ personal Ghostty fork in `~/modev/ghostty`. Started 2026-10-30 on Rex Beta 0.1.0
 
 ## Setup
 
-- Config: `terminal/rex/init.lua`, which `require`s `panes.lua`. Each file is
+- Config: `terminal/rex/init.lua`, which `require`s `panes.lua` and `sessions.lua`. Each file is
   linked into `~/.config/rex/` by `install.sh`. Apply with `rex config check && rex config reload`.
 - Shortcuts set in the app's settings override `init.lua`. They're stored in
   `~/Library/Application Support/com.superlogical.rex/Shortcuts/shortcuts.json`
@@ -46,9 +46,8 @@ split there, so one gesture can also change split orientation. Rex's built-in
 `pane.move` just swaps with the neighbor.
 
 Instead, `terminal/rex/panes.lua` adds a swap/move-into on ⇧⌥⌘+arrow and a
-push into the neighbor's row or column, which had ⇧⌥+arrow from 2026-11-01 until
-pane focus took that chord (2026-11-04). It now sits on the corner keys around the
-arrows, see [Shortcut layout](#shortcut-layout). ⌘⌃ was ruled
+push into the neighbor's row or column on ⇧⌥+arrow (2026-11-01; see
+[Shortcut layout](#shortcut-layout) for its detour on 2026-11-04). ⌘⌃ was ruled
 out for push because the MBP keyboard can't register caps+A+F+J, and the swap
 chord already uses every finger (see brain's
 `keyboarding/physical-keyboard-limitations.md`). Push covers flipping a split
@@ -89,59 +88,53 @@ Related pane-movement requests are tracked in [Feedback threads](#feedback-threa
 
 ## Shortcut layout
 
-Reorganized 2026-11-04 so switching tabs is a home-row chord. With the caps-lock
-Karabiner layer, arrows, PgUp/PgDn and all four modifiers are on the home row,
-but ⌃Tab and ⇧⌘[ ] aren't. Modifiers are written in that layer's order, ⌃⇧⌥⌘.
+Reorganized 2026-11-04 so switching tabs is a home-row chord: ⌃Tab and ⇧⌘[ ]
+aren't on the caps-lock Karabiner layer, but arrows, PgUp/PgDn and all four
+modifiers are. Modifiers are written in that layer's order, ⌃⇧⌥⌘. The m and v
+are Dvorak letters, sitting below ← and → the way PgUp/PgDn sit above.
 
-| Chord | + arrows | + PgUp/PgDn |
-|---|---|---|
-| ⇧⌥ | focus pane | PgUp collapse session, then go to the previous one / PgDn expand |
-| ⇧⌥⌘ | swap pane (`pane_move_dir`) | push pane: PgUp ↑, PgDn → (plus m ←, v ↓) |
-| ⇧⌘ | resize pane | free |
-| ⌥⌘ | ↑↓ previous/next tab, ←→ previous/next session | move tab |
+| Chord | arrows: panes | PgUp/PgDn: tabs | m/v: sessions |
+|---|---|---|---|
+| ⌥⌘ | focus | previous/next tab | previous/next session |
+| ⇧⌥⌘ | swap (`pane_move_dir`) | move tab | move session (`session_move`) |
+| ⇧⌥ | push (`pane_push_dir`) | free | collapse then previous / expand |
+| ⇧⌘ | resize | free | — |
 
-Panes are the ⇧ chords and tabs are ⌥⌘. There are five arrow functions (focus,
-swap, push, resize, tabs) and only four arrow chords without ⌃, which is why push
-lost its arrows. Ruled out for the fifth:
+The key cluster names the thing, the chord names the verb: ⌥⌘ goes to it, ⇧⌥⌘
+moves it. Pane arrows are where Ghostty had them; an interim layout put tabs on
+⌥⌘+arrows and pane focus on ⇧⌥, and muscle memory fought it all day.
 
-- ⌃ is out. With any other modifier it jams the MBP keyboard on the caps layer:
-  ⌃⌘ (push note above), and ⌃⇧, ⌃⌥ and ⌃⇧⌥ (all tried for push, 2026-11-04).
-  ⌃+arrow alone hits macOS defaults.
+Ruled out along the way:
+
+- ⌃ chords. With any other modifier, ⌃ jams the MBP keyboard on the caps layer:
+  ⌃⌘ (push note above), and ⌃⇧, ⌃⌥ and ⌃⇧⌥ (all tried, 2026-11-04). ⌃+arrow
+  alone hits macOS defaults.
 - Key modes: not wanted, partly because Rex pins the key-hint panel while one is active.
 - ⇧+arrow alone would take selection away from nvim and other TUIs.
-
-Push went to the four keys at the corners of the caps-layer arrows instead: PgUp
-and PgDn above, Dvorak m and v below, with ⇧⌥⌘ like swap.
-Each corner turns one step clockwise into a direction: PgUp ↑, PgDn →, v ↓, m ←.
-
-Before that, a `pane_rotate` on ⇧⌥⌘PgUp/PgDn turned the pane a quarter turn around
-its tree partner (2026-11-04, ff054c4). It was dropped for corner-key push. Two
-lessons from it: `move_block` can't anchor on a group, so a turn next to a group
-had to settle for one of its panes, and a turn back didn't always undo a turn,
-because a pane's partner in the tree can change.
+- `pane_rotate` (ff054c4), a quarter turn around the pane's tree partner. Not the
+  move wanted. Lessons: `move_block` can't anchor on a group, and a turn back
+  doesn't always undo a turn, because a pane's tree partner can change.
+- An accordion on session switching (go to a session, collapse the rest). It
+  worked, but keeping exactly one session open was too big a change; chrismo
+  wants to choose what stays expanded. The deferred #feedback request
+  "Auto-collapse inactive sessions in the sidebar" asks for that built in.
 
 Next/previous tab crosses into the neighboring session and wraps at the ends
-(observed by chrismo, 2026-11-04). With mostly one-tab sessions that already walks
-sessions. Collapsing a session only changes the sidebar, not the tabs, but it
-keeps the ⌘1–9 numbers easier to track.
+(observed by chrismo, 2026-11-04). Collapsing a session only changes the sidebar,
+but it keeps the ⌘1–9 numbers easier to track. Collapse and session switching need
+separate keys: with every session collapsed, tab switching can't leave the current
+session, but next/previous session still can, and expands the session it lands on
+(observed by chrismo). No API reports which sessions are collapsed, so "go to the
+previous *expanded* session" is a TODO in `sessions.lua`. The active bug "Show
+Activity forgets session collapse state when toggled" means ⌘. can lose collapses.
 
-Collapse/expand first sat on ⌥⌘←→ and had a dead end: once every session was
-collapsed, ⌥⌘↑↓ couldn't reach another session and expand only works on the
-current one. No API reports which sessions are collapsed, so an action can't
-detect that. Switching sessions and folding them now use separate chords: with
-every session collapsed, ⌥⌘→ still goes to the next session and expands it
-(observed by chrismo, 2026-11-04).
-
-Tried and dropped: an accordion on ⌥⌘←→ (go to the previous/next session, expand
-it, collapse the rest). It worked, but keeping exactly one session open was too
-big a change; chrismo wants to choose what stays expanded. The deferred #feedback
-request "Auto-collapse inactive sessions in the sidebar" asks for that built in.
-The active bug "Show Activity forgets session collapse state when toggled" means
-⌘. can lose manual collapses.
+Moving a session uses the server's `session.move` through `rex.call`;
+`rex.session.move` and `rex.session.list` aren't callable from Lua (tried
+2026-11-04). The `session.list` order matches the sidebar.
 
 Open: whether next/previous tab and ⌘1–9 follow the ⌘. Activity filter. Neither
-the docs nor #feedback say. Rex's default ⌥⌘W (Close Tab) now sits beside the tab chords;
-Ghostty's config unbinds the equivalent, Rex's doesn't.
+the docs nor #feedback say. Rex's default ⌥⌘W (Close Tab) sits beside the ⌥⌘
+chords; Ghostty's config unbinds the equivalent, Rex's doesn't.
 
 ## Sessions, tabs and panes
 
@@ -149,8 +142,8 @@ Ghostty's config unbinds the equivalent, Rex's doesn't.
   name, then Enter. ⇧⌘N creates a new session instead; don't use it to submit
   the name in the picker.
 - The command palette (⇧⌘P) can search tab names across sessions. For panes,
-  use ⇧⌥+arrow to focus directionally or ⌘[ / ⌘] to cycle; no searchable pane
-  picker found. ⌘1–9 selects tabs; ⌥⌘↑↓ (and the default ⌃Tab) cycles them.
+  use ⌥⌘+arrow to focus directionally or ⌘[ / ⌘] to cycle; no searchable pane
+  picker found. ⌘1–9 selects tabs; ⌥⌘PgUp/PgDn (and the default ⌃Tab) cycles them.
 - Settings → Integrations → Agent Behavior → "Let agents name sessions" lets
   agents label sessions for their work. Useful for a single agent task, but
   multiple agents can rename the same session, and people report the setting
