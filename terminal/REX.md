@@ -21,10 +21,12 @@ personal Ghostty fork in `~/modev/ghostty`. Started 2026-10-30 on Rex Beta 0.1.0
 
 ## Claude hooks: Activity needs OSC 7501
 
-Out of the box, Claude sessions never appear in Rex's Activity filter (checked
-2026-11-05): Rex's only Claude hook is `session-start`, and Activity is fed by
-programs sending OSC 7501 status reports (pi does; Claude doesn't). Turning on
-`rex skill setup --session-naming` changed nothing.
+Out of the box, Claude sessions did not appear in Rex's Activity filter here
+(2026-11-05), though pi did. Activity is fed by OSC 7501 status reports.
+Community posts say Claude Code reports `app: claude-code` natively, and an
+open #feedback-mac bug, "claude code not visible in activity", describes the
+same empty list. Whether Claude sends nothing or Rex drops it is unsettled.
+Turning on `rex skill setup --session-naming` changed nothing.
 
 `bin/rex-status` sends the report from the UserPromptSubmit, PostToolUse,
 PermissionRequest and Stop hooks (`install.sh`). Confirmed: the session shows in
