@@ -52,9 +52,9 @@ LUA
     bound("alt+cmd+right", "session.next")'
 }
 
-@test "shift-opt page keys collapse and expand the session" {
+@test "shift-opt page keys collapse (then go up) and expand the session" {
   check_bindings '
-    bound("shift+alt+pageup", "session.collapse")
+    bound("shift+alt+pageup", "session_collapse_previous")
     bound("shift+alt+pagedown", "session.expand")'
 }
 
@@ -100,3 +100,22 @@ LUA
 }
 
 
+
+@test "collapse-previous folds this session before moving up" {
+  run lua - "$BATS_TEST_DIRNAME/rex" <<'LUA'
+local dir = arg[1]
+package.path = dir .. "/?.lua;" .. package.path
+local actions, queued = {}, {}
+rex = {
+  bind = function() end,
+  action = function(def) actions[def.name] = def end,
+  client = { queue = function(name) queued[#queued + 1] = name end },
+}
+dofile(dir .. "/init.lua")
+actions.session_collapse_previous.run({}, {})
+local got = table.concat(queued, " ")
+assert(got == "session.collapse session.previous", "got " .. got)
+LUA
+  echo "$output"
+  [ "$status" -eq 0 ]
+}

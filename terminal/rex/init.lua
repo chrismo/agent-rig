@@ -25,7 +25,19 @@ rex.bind("alt+cmd+up", "client.tab.previous")
 rex.bind("alt+cmd+down", "client.tab.next")
 rex.bind("alt+cmd+left", "session.previous")
 rex.bind("alt+cmd+right", "session.next")
-rex.bind("shift+alt+pageup", "session.collapse")
+-- TODO: go to the previous *expanded* session, wrapping around. Rex exposes no
+-- collapse state (no API field, no event), so track it in this file: record what
+-- these keys collapse/expand, then session.select the target from session.list.
+-- Sidebar clicks, ⌘K and auto-expand on entering a session go unseen.
+rex.action{
+  name  = "session_collapse_previous",
+  title = "Collapse Session and Go to Previous",
+  run   = function()
+    rex.client.queue("session.collapse")
+    rex.client.queue("session.previous")
+  end,
+}
+rex.bind("shift+alt+pageup", "session_collapse_previous")
 rex.bind("shift+alt+pagedown", "session.expand")
 rex.bind("alt+cmd+pageup", "client.tab.move.backward")
 rex.bind("alt+cmd+pagedown", "client.tab.move.forward")

@@ -95,7 +95,7 @@ but ⌃Tab and ⇧⌘[ ] aren't. Modifiers are written in that layer's order, �
 
 | Chord | + arrows | + PgUp/PgDn |
 |---|---|---|
-| ⇧⌥ | focus pane | collapse (PgUp) / expand (PgDn) session |
+| ⇧⌥ | focus pane | PgUp collapse session, then go to the previous one / PgDn expand |
 | ⇧⌥⌘ | swap pane (`pane_move_dir`) | push pane: PgUp ↑, PgDn → (plus m ←, v ↓) |
 | ⇧⌘ | resize pane | free |
 | ⌥⌘ | ↑↓ previous/next tab, ←→ previous/next session | move tab |
