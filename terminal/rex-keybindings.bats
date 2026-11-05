@@ -40,12 +40,16 @@ LUA
   [ "$status" -eq 0 ]
 }
 
-@test "opt-cmd arrows select the previous and next tab" {
+@test "opt-cmd up and down select the previous and next tab" {
   check_bindings '
-    bound("alt+cmd+left", "client.tab.previous")
     bound("alt+cmd+up", "client.tab.previous")
-    bound("alt+cmd+right", "client.tab.next")
     bound("alt+cmd+down", "client.tab.next")'
+}
+
+@test "opt-cmd left and right collapse and expand the session" {
+  check_bindings '
+    bound("alt+cmd+left", "session.collapse")
+    bound("alt+cmd+right", "session.expand")'
 }
 
 @test "opt-cmd page keys move the tab" {

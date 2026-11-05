@@ -98,7 +98,7 @@ but ⌃Tab and ⇧⌘[ ] aren't. Modifiers are written in that layer's order, �
 | ⇧⌥ | focus pane | free |
 | ⇧⌥⌘ | swap pane (`pane_move_dir`) | push pane: PgUp ↑, PgDn → (plus m ←, v ↓) |
 | ⇧⌘ | resize pane | free |
-| ⌥⌘ | previous (←↑) / next (→↓) tab | move tab |
+| ⌥⌘ | ↑↓ previous/next tab, ← collapse / → expand session | move tab |
 
 Panes are the ⇧ chords and tabs are ⌥⌘. There are five arrow functions (focus,
 swap, push, resize, tabs) and only four arrow chords without ⌃, which is why push
@@ -120,9 +120,14 @@ lessons from it: `move_block` can't anchor on a group, so a turn next to a group
 had to settle for one of its panes, and a turn back didn't always undo a turn,
 because a pane's partner in the tree can change.
 
-Open: whether next/previous tab and ⌘1–9 follow the ⌘. Activity filter, and
-whether they cross sessions when Activity is grouped by session. Neither the docs
-nor #feedback say. Rex's default ⌥⌘W (Close Tab) now sits beside the tab chords;
+Next/previous tab crosses into the neighboring session and wraps at the ends
+(observed by chrismo, 2026-11-04). With mostly one-tab sessions that already walks
+sessions, so ⌥⌘←→ went to collapse/expand rather than next/previous session.
+Collapsing hides a session's tabs, which makes the ⌘1–9 numbers easier to keep
+track of.
+
+Open: whether next/previous tab and ⌘1–9 follow the ⌘. Activity filter. Neither
+the docs nor #feedback say. Rex's default ⌥⌘W (Close Tab) now sits beside the tab chords;
 Ghostty's config unbinds the equivalent, Rex's doesn't.
 
 ## Sessions, tabs and panes
@@ -132,7 +137,7 @@ Ghostty's config unbinds the equivalent, Rex's doesn't.
   the name in the picker.
 - The command palette (⇧⌘P) can search tab names across sessions. For panes,
   use ⇧⌥+arrow to focus directionally or ⌘[ / ⌘] to cycle; no searchable pane
-  picker found. ⌘1–9 selects tabs; ⌥⌘+arrow (and the default ⌃Tab) cycles them.
+  picker found. ⌘1–9 selects tabs; ⌥⌘↑↓ (and the default ⌃Tab) cycles them.
 - Settings → Integrations → Agent Behavior → "Let agents name sessions" lets
   agents label sessions for their work. Useful for a single agent task, but
   multiple agents can rename the same session, and people report the setting
