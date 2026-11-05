@@ -183,7 +183,7 @@ rex.action{
   name        = "pane_aim",
   title       = "Aim Pane",
   description = "Move the focused pane to the nearest edge of another pane that way.",
-  args        = { direction = "string", start = "boolean" },
+  args        = { direction = "string", start = "boolean?" },
   run         = function(ctx, args)
     if OPPOSITE[args.direction] == nil then error("direction must be left, right, up, or down", 0) end
     local fresh = args.start or aiming == nil

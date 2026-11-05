@@ -19,10 +19,10 @@ local function norm(key)
   return mode .. table.concat(parts, "+")
 end
 
-bindings, modes = {}, {}
+bindings, modes, actions = {}, {}, {}
 rex = {
   bind = function(key, action, args) bindings[norm(key)] = { action = action, args = args or {} } end,
-  action = function() end,
+  action = function(def) actions[def.name] = def end,
   mode = function(name, opts) modes[name] = opts or {} end,
 }
 dofile(dir .. "/init.lua")
@@ -41,6 +41,17 @@ assert(load(assertions))()
 LUA
   echo "$output"
   [ "$status" -eq 0 ]
+}
+
+@test "bindings pass every argument their action requires" {
+  check_bindings '
+    for key, b in pairs(bindings) do
+      local def = actions[b.action]
+      for name, kind in pairs(def and def.args or {}) do
+        assert(kind:sub(-1) == "?" or b.args[name] ~= nil,
+          key .. " -> " .. b.action .. " is missing required arg " .. name)
+      end
+    end'
 }
 
 # Arrows act on panes.
