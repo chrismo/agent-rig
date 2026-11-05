@@ -28,7 +28,8 @@ programs sending OSC 7501 status reports (pi does; Claude doesn't). Turning on
 
 `bin/rex-status` sends the report from the UserPromptSubmit, PostToolUse,
 PermissionRequest and Stop hooks (`install.sh`). Confirmed: the session shows in
-Activity with a working animation.
+Activity with a working animation, and a permission prompt shows as Blocked
+with "Claude needs permission".
 
 `tab-status` still sets titles only under Ghostty (389c1d0).
 
