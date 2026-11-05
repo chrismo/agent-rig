@@ -89,7 +89,12 @@ Lessons from the walk:
 Rex pins a key-hint panel up for as long as any mode is active. "Show key
 sequence hints" doesn't hide it; the accepted request to hide or minimize that
 panel is tracked in [Feedback threads](#feedback-threads), and hadn't shipped as
-of 2026-11-05. Before aim mode, a version without a mode walked the pane with an
+of 2026-11-05; chrismo chose to wait for it. Fallback if it never ships: drop the
+mode. ⇧⌥+arrows always move live, with no Enter, and an undo chord
+(⇧⌥+Backspace, say) takes back the current run of moves. A run ends when a
+different pane moves or anything else changes the layout, which `session.view`'s
+`revision` shows. That depends on the layout, not on a timer. Untried: whether a
+focus change alone bumps `revision` (it would end the run, which is fine). Before aim mode, a version without a mode walked the pane with an
 invisible "still the same move" timer, so the same key did different things
 depending on timing. It wasn't predictable.
 
