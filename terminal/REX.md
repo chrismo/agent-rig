@@ -45,8 +45,10 @@ pane's four edges (top/bottom/left/right). Releasing the modifiers drops the
 split there, so one gesture can also change split orientation. Rex's built-in
 `pane.move` just swaps with the neighbor.
 
-Instead, `terminal/rex/panes.lua` adds a swap/move-into on ⌘⌥⇧+arrow and a
-push into the neighbor's row or column on ⌥⇧+arrow (2026-11-01). ⌘⌃ was ruled
+Instead, `terminal/rex/panes.lua` adds a swap/move-into on ⇧⌥⌘+arrow and a
+push into the neighbor's row or column, which had ⇧⌥+arrow from 2026-11-01 until
+pane focus took that chord (2026-11-04, see [Shortcut layout](#shortcut-layout)).
+Push is unbound for now and still runs from the command palette. ⌘⌃ was ruled
 out for push because the MBP keyboard can't register caps+A+F+J, and the swap
 chord already uses every finger (see brain's
 `keyboarding/physical-keyboard-limitations.md`). Push covers flipping a split
@@ -85,14 +87,54 @@ Unavoidable surprise left, from Rex's binary split tree:
 
 Related pane-movement requests are tracked in [Feedback threads](#feedback-threads).
 
+## Shortcut layout
+
+Reorganized 2026-11-04 so switching tabs is a home-row chord. With the caps-lock
+Karabiner layer, arrows, PgUp/PgDn and all four modifiers are on the home row,
+but ⌃Tab and ⇧⌘[ ] aren't. Modifiers are written in that layer's order, ⌃⇧⌥⌘.
+
+| Chord | + arrows | + PgUp/PgDn |
+|---|---|---|
+| ⇧⌥ | focus pane | free |
+| ⇧⌥⌘ | swap pane (`pane_move_dir`) | rotate pane counterclockwise / clockwise (`pane_rotate`) |
+| ⇧⌘ | resize pane | free |
+| ⌥⌘ | previous (←↑) / next (→↓) tab | move tab |
+
+Panes are the ⇧ chords and tabs are ⌥⌘. There are five arrow functions (focus,
+swap, push, resize, tabs) and only four arrow chords without ⌃, which is why push
+lost its arrows. Ruled out for the fifth:
+
+- ⌃⌘ jams on the MBP keyboard (see the push note above). ⌃⇧ and ⌃⌥ are untested.
+- Key modes: not wanted, partly because Rex pins the key-hint panel while one is active.
+- ⇧+arrow alone would take selection away from nvim and other TUIs.
+
+Push's main job was flipping side by side ↔ stacked, so `pane_rotate` replaced it.
+It sits beside swap on ⇧⌥⌘, the chord for moving a pane. It moves the pane a quarter turn around its tree
+partner. `move_block` can't anchor on a group, so when the partner is a group it
+turns around the group's pane that touches this one and lies furthest toward the
+target side instead. Every press is one move, with no placeholder pane and no refusals.
+Ruled out: a placeholder pane beside the group (too slow and visible) and refusing
+group partners. What that costs:
+
+- Beside a row of panes (A│B│C, rotate A), A joins B's column instead of
+  spanning B and C, the same result push gave.
+- Undo isn't guaranteed. After A beside a B/C stack turns above it, A's partner is B
+  alone, so turning back gives A│B over C, not the original layout (confirmed on the
+  live server, 2026-11-04).
+
+Open: whether next/previous tab and ⌘1–9 follow the ⌘. Activity filter, and
+whether they cross sessions when Activity is grouped by session. Neither the docs
+nor #feedback say. Rex's default ⌥⌘W (Close Tab) now sits beside the tab chords;
+Ghostty's config unbinds the equivalent, Rex's doesn't.
+
 ## Sessions, tabs and panes
 
 - To create a named session without first getting a random name: ⌘K, type the
   name, then Enter. ⇧⌘N creates a new session instead; don't use it to submit
   the name in the picker.
 - The command palette (⇧⌘P) can search tab names across sessions. For panes,
-  use ⌥⌘+arrow to focus directionally or ⌘[ / ⌘] to cycle; no searchable pane
-  picker found. ⌘1–9 selects tabs and ⌃Tab cycles them.
+  use ⇧⌥+arrow to focus directionally or ⌘[ / ⌘] to cycle; no searchable pane
+  picker found. ⌘1–9 selects tabs; ⌥⌘+arrow (and the default ⌃Tab) cycles them.
 - Settings → Integrations → Agent Behavior → "Let agents name sessions" lets
   agents label sessions for their work. Useful for a single agent task, but
   multiple agents can rename the same session, and people report the setting
@@ -169,6 +211,7 @@ below were checked 2026-11-02 unless otherwise noted and may change.
 - [Rotate / transpose a split](https://discord.com/channels/1546797889009881158/1559678526943137813) — feature request.
 - [URL parsing error caused by text wrapping](https://discord.com/channels/1546797889009881158/1563062398829723658) — bug; wrapped URL is only linked through the first line.
 - [Increasing font and then setting font](https://discord.com/channels/1546797889009881158/1565674794035183626) — bug; changing size while zoomed reportedly doesn't apply until zoom is reset.
+- [Option-drag for rectangular (column) text selection](https://discord.com/channels/1546797889009881158/1567758434781102161) — feature request filed by chrismo; Option-drag currently makes a normal line-wise selection. Active as of 2026-11-05.
 
 ### Deferred
 
