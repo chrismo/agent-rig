@@ -35,8 +35,14 @@ local function current_layout(block_id)
   error("the focused pane isn't in a layout", 0)
 end
 
+local function gap(me, r, dir)
+  local along = axes(dir)
+  if dir == "left" or dir == "up" then return me[along] - (r[along] + r[along + 2]) end
+  return r[along] - (me[along] + me[along + 2])
+end
+
 local function neighbor(layout, block_id, dir)
-  local along, across = axes(dir)
+  local _, across = axes(dir)
   local all = leaves(layout, {})
   local me
   for _, leaf in ipairs(all) do
@@ -45,18 +51,13 @@ local function neighbor(layout, block_id, dir)
   local best, best_rect, best_gap, best_overlap
   for _, leaf in ipairs(all) do
     local r = leaf.rect
-    local gap
-    if dir == "left" or dir == "up" then
-      gap = me[along] - (r[along] + r[along + 2])
-    else
-      gap = r[along] - (me[along] + me[along + 2])
-    end
+    local g = gap(me, r, dir)
     local overlap = math.min(me[across] + me[across + 2], r[across] + r[across + 2])
       - math.max(me[across], r[across])
-    if leaf.block_id ~= block_id and gap > -EPS and overlap > EPS then
-      if best == nil or gap < best_gap - EPS
-          or (math.abs(gap - best_gap) <= EPS and overlap > best_overlap) then
-        best, best_rect, best_gap, best_overlap = leaf.block_id, r, gap, overlap
+    if leaf.block_id ~= block_id and g > -EPS and overlap > EPS then
+      if best == nil or g < best_gap - EPS
+          or (math.abs(g - best_gap) <= EPS and overlap > best_overlap) then
+        best, best_rect, best_gap, best_overlap = leaf.block_id, r, g, overlap
       end
     end
   end
@@ -88,12 +89,13 @@ local function landing_edge(me, there, dir)
   return best, same_span
 end
 
-local function place(block_id, anchor_id, edge)
+local function place(block_id, anchor_id, edge, ratio)
   local _, err = rex.session.move_block{
     block_id        = block_id,
     anchor_block_id = anchor_id,
     direction       = (edge == "left" or edge == "right") and "horizontal" or "vertical",
     side            = (edge == "left" or edge == "up") and "before" or "after",
+    ratio           = ratio,
   }
   if err ~= nil then error(err, 0) end
 end
@@ -137,6 +139,65 @@ rex.action{
   end,
 }
 
+local function parent_of(node, block_id)
+  local split = node.split
+  if split == nil then return nil end
+  for _, side in ipairs({ "before", "after" }) do
+    if split[side].block_id == block_id then return split, side end
+    local found, found_side = parent_of(split[side], block_id)
+    if found ~= nil then return found, found_side end
+  end
+end
+
+local TURNS = {
+  clockwise        = { left = "up", up = "right", right = "down", down = "left" },
+  counterclockwise = { left = "down", down = "right", right = "up", up = "left" },
+}
+
+-- move_block can't anchor on a group: use its pane touching me, furthest toward target.
+local function orbit_anchor(partner, me, facing, target)
+  if partner.block_id ~= nil then return partner.block_id end
+  local t = axes(target)
+  local best, best_edge
+  for _, leaf in ipairs(leaves(partner, {})) do
+    local r = leaf.rect
+    if math.abs(gap(me, r, facing)) <= EPS then
+      local edge = (target == "left" or target == "up") and -r[t] or r[t] + r[t + 2]
+      if best == nil or edge > best_edge + EPS then best, best_edge = leaf.block_id, edge end
+    end
+  end
+  return best
+end
+
+rex.action{
+  name        = "pane_rotate",
+  title       = "Rotate Pane",
+  description = "Move the pane a quarter turn around its split partner, or around the facing pane when the partner is a group.",
+  args        = { turn = "string" },
+  run         = function(ctx, args)
+    local turn = TURNS[args.turn]
+    if turn == nil then error("turn must be clockwise or counterclockwise", 0) end
+    if ctx.block_id == nil then error("no focused pane", 0) end
+    local split, side = parent_of(current_layout(ctx.block_id), ctx.block_id)
+    if split == nil then return end
+    local at = split.direction == "horizontal"
+      and (side == "before" and "left" or "right")
+      or (side == "before" and "up" or "down")
+    local target = turn[at]
+    local partner = split[side == "before" and "after" or "before"]
+    local anchor = orbit_anchor(partner, split[side].rect, OPPOSITE[at], target)
+    local ratio
+    if partner.block_id ~= nil then
+      local share = side == "before" and split.ratio or 1 - split.ratio
+      ratio = (target == "left" or target == "up") and share or 1 - share
+    end
+    place(ctx.block_id, anchor, target, ratio)
+    return { anchor = anchor, side = target }
+  end,
+}
+
 for _, dir in ipairs({ "up", "down", "left", "right" }) do
   rex.bind("shift+alt+cmd+" .. dir, "pane_move_dir", { direction = dir })
 end
+rex.bind("shift+alt+cmd+pagedown", "pane_rotate", { turn = "clockwise" })
+rex.bind("shift+alt+cmd+pageup", "pane_rotate", { turn = "counterclockwise" })
