@@ -19,11 +19,18 @@ personal Ghostty fork in `~/modev/ghostty`. Started 2026-10-30 on Rex Beta 0.1.0
 - Docs as markdown: append `.md` to any page; index at
   `https://www.superlogical.com/rex/docs/llms.txt`.
 
-## Claude hooks: hands off for now
+## Claude hooks: Activity needs OSC 7501
 
-`tab-status` sets titles only under Ghostty (389c1d0), so Rex tabs get no
-status glyphs. That is deliberate: see what Rex does for Claude sessions out of
-the box before agent-rig intervenes.
+Out of the box, Claude sessions never appear in Rex's Activity filter (checked
+2026-11-05): Rex's only Claude hook is `session-start`, and Activity is fed by
+programs sending OSC 7501 status reports (pi does; Claude doesn't). Turning on
+`rex skill setup --session-naming` changed nothing.
+
+`bin/rex-status` sends the report from the UserPromptSubmit, PostToolUse,
+PermissionRequest and Stop hooks (`install.sh`). Confirmed: the session shows in
+Activity with a working animation.
+
+`tab-status` still sets titles only under Ghostty (389c1d0).
 
 ## Moestty features in Rex
 

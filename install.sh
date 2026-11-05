@@ -84,6 +84,8 @@ echo ""
 # and the command would never execute.
 HOOK_CMD_PREFIX="tab-status --hook"
 TITLE_CMD="tab-status --title > /dev/null 2>&1 || true"
+# rex-status feeds Rex's Activity filter (OSC 7501); a no-op outside Rex.
+REX_CMD_PREFIX="rex-status"
 
 new_settings=$(
   super -J -c "values {...{hooks:{}}, ...this} | values {...this, hooks: {...this.hooks,
@@ -91,21 +93,21 @@ new_settings=$(
       matcher: '',
       hooks: [{
         type: 'command',
-        command: '${HOOK_CMD_PREFIX} engage > /dev/null; ${TITLE_CMD}'
+        command: '${REX_CMD_PREFIX} working > /dev/null 2>&1; ${HOOK_CMD_PREFIX} engage > /dev/null; ${TITLE_CMD}'
       }]
     }],
     PermissionRequest: [{
       matcher: '',
       hooks: [{
         type: 'command',
-        command: '${HOOK_CMD_PREFIX} waiting > /dev/null; ${TITLE_CMD}'
+        command: '${REX_CMD_PREFIX} blocked > /dev/null 2>&1; ${HOOK_CMD_PREFIX} waiting > /dev/null; ${TITLE_CMD}'
       }]
     }],
     PostToolUse: [{
       matcher: '',
       hooks: [{
         type: 'command',
-        command: '${HOOK_CMD_PREFIX} active > /dev/null; ${TITLE_CMD}'
+        command: '${REX_CMD_PREFIX} working > /dev/null 2>&1; ${HOOK_CMD_PREFIX} active > /dev/null; ${TITLE_CMD}'
       }]
     }, {
       matcher: 'Bash',
@@ -119,7 +121,7 @@ new_settings=$(
       matcher: '',
       hooks: [{
         type: 'command',
-        command: '${HOOK_CMD_PREFIX} stop > /dev/null; ${TITLE_CMD}'
+        command: '${REX_CMD_PREFIX} done > /dev/null 2>&1; ${HOOK_CMD_PREFIX} stop > /dev/null; ${TITLE_CMD}'
       }]
     }],
     PreToolUse: [{
@@ -721,7 +723,7 @@ fi
 # When adding a new user-facing command to bin/, add it here.
 LOCAL_BIN="${LOCAL_BIN:-$HOME/.local/bin}"
 mkdir -p "$LOCAL_BIN"
-for cmd in agent-search agent-read claude-send claude-src work-context gt wt wt-new ticket-sort kaomoji pi-sync; do
+for cmd in agent-search agent-read claude-send claude-src work-context gt wt wt-new ticket-sort kaomoji pi-sync rex-status; do
   src="$REPO_DIR/bin/$cmd"
   dest="$LOCAL_BIN/$cmd"
   if [[ -f "$src" ]]; then

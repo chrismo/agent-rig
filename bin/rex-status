@@ -1,0 +1,39 @@
+#!/usr/bin/env bash5
+# rex-status <working|blocked|done|idle> — report Claude's state to Rex (OSC 7501).
+# https://www.superlogical.com/rex/docs/build/program-status.md
+# REX_STATUS_TTY overrides the target tty (tests point it at a file).
+
+set -u
+
+state="${1:-}"
+case "$state" in
+  working | done | idle) body="state=$state:app=claude-code" ;;
+  blocked)
+    msg=$(printf '%s' 'Claude needs permission' | base64)
+    body="state=blocked:kind=permission:app=claude-code:msg=$msg"
+    ;;
+  *)
+    echo "usage: rex-status working|blocked|done|idle" >&2
+    exit 2
+    ;;
+esac
+
+[[ "${TERM_PROGRAM:-}" == rex ]] || exit 0
+
+# Hooks have no controlling terminal; the claude process above them does.
+resolve_pts() {
+  local pid="$PPID" tty
+  while [[ "$pid" -gt 1 ]]; do
+    tty=$(ps -o tty= -p "$pid" 2>/dev/null | tr -d ' ')
+    if [[ "$tty" == ttys* ]]; then
+      printf '/dev/%s' "$tty"
+      return 0
+    fi
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+  done
+  return 1
+}
+
+target="${REX_STATUS_TTY:-$(resolve_pts)}" || exit 0
+printf '\e]7501;%s\a' "$body" > "$target" 2>/dev/null || true
+exit 0
