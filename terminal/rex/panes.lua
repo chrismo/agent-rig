@@ -118,11 +118,7 @@ rex.action{
   end,
 }
 
--- Aim mode: ⇧⌥+arrow starts moving the focused pane, live, one landing spot at
--- a time; arrows walk, Enter keeps it there, Escape puts it back. Rex shows
--- no preview, so the move itself is the preview.
--- Each other pane offers the middle of each half. An edge facing the source
--- across a matching span would only reshuffle sizes, so skip it.
+-- An edge facing the source across a matching span would only reshuffle sizes.
 local function landing_spots(layout, source)
   local spots = {}
   for _, leaf in ipairs(leaves(layout, {})) do
@@ -223,11 +219,12 @@ rex.action{
   name  = "pane_aim_cancel",
   title = "Cancel Aiming Pane",
   run   = function()
-    local a = aiming
-    aiming = nil
-    for i = #(a and a.back or {}), 1, -1 do
-      place(a.source, a.back[i].anchor, a.back[i].edge)
+    if aiming ~= nil then
+      for i = #aiming.back, 1, -1 do
+        place(aiming.source, aiming.back[i].anchor, aiming.back[i].edge)
+      end
     end
+    aiming = nil
     rex.client.queue("client.mode.exit")
   end,
 }
