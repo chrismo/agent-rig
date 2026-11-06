@@ -178,14 +178,38 @@ Open: whether next/previous tab and ⌘1–9 follow the ⌘. Activity filter. Ne
 the docs nor #feedback say. Rex's default ⌥⌘W (Close Tab) sits beside the ⌥⌘
 chords; Ghostty's config unbinds the equivalent, Rex's doesn't.
 
+## How I use it (evolving)
+
+What's working for chrismo so far, revised as the habits settle. Dated
+observations, not settled advice.
+
+- **Home base: the sidebar's Show Activity toggle.** Live sessions show their
+  program state there, so it covers most of "what needs me" (2026-11-05).
+- **When something isn't in Activity view, reach for the session switcher.** It
+  finds what the Activity filter hides, then go back to Activity (2026-11-05).
+- **Sessions are in the command palette (⇧⌘P) too**, alongside tab names, so it's
+  a second way to jump to them (2026-11-05).
+- **Activity mode sometimes shows panes as separate "tabs" in the sidebar.**
+  It happens only occasionally. chrismo hasn't worked out the trigger yet
+  (2026-11-05).
+- **New quick switcher (experimental, preview.26): tried it, not adopted.**
+  chrismo's verdict was "not quite there" (2026-11-05). It merges Go to
+  Anything (⌘P) and View Activity into one list of sessions, tabs and panes with
+  their program state. ⌃1/⌃2/⌃3 switch between Sessions, Blocks and Activity, and
+  ⌘↩ opens the selection in a new window. It also renames Change Session to Go to
+  Session. Turn it on under Settings → Developer → Experimental (needs Developer
+  Mode). Worth another look as it matures, since it's the first searchable pane
+  list.
+
 ## Sessions, tabs and panes
 
 - To create a named session without first getting a random name: ⌘K, type the
   name, then Enter. ⇧⌘N creates a new session instead; don't use it to submit
   the name in the picker.
-- The command palette (⇧⌘P) can search tab names across sessions. For panes,
-  use ⌥⌘+arrow to focus directionally or ⌘[ / ⌘] to cycle; no searchable pane
-  picker found. ⌘1–9 selects tabs; ⌥⌘PgUp/PgDn (and the default ⌃Tab) cycles them.
+- The command palette (⇧⌘P) can search tab and session names across sessions.
+  For panes, use ⌥⌘+arrow to focus directionally or ⌘[ / ⌘] to cycle. The
+  experimental new quick switcher's Blocks list (⌃2) is the only searchable
+  pane picker so far. ⌘1–9 selects tabs; ⌥⌘PgUp/PgDn (and the default ⌃Tab) cycles them.
 - Settings → Integrations → Agent Behavior → "Let agents name sessions" lets
   agents label sessions for their work. Useful for a single agent task, but
   multiple agents can rename the same session, and people report the setting
