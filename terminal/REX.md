@@ -263,6 +263,7 @@ below were checked 2026-11-02 unless otherwise noted and may change.
 - [URL parsing error caused by text wrapping](https://discord.com/channels/1546797889009881158/1563062398829723658) — bug; wrapped URL is only linked through the first line.
 - [Increasing font and then setting font](https://discord.com/channels/1546797889009881158/1565674794035183626) — bug; changing size while zoomed reportedly doesn't apply until zoom is reset.
 - [Option-drag for rectangular (column) text selection](https://discord.com/channels/1546797889009881158/1567758434781102161) — feature request filed by chrismo; Option-drag currently makes a normal line-wise selection. Active as of 2026-11-05.
+- [Duration limit for Show Activity](https://discord.com/channels/1546797889009881158/1568093877599084635) — feature request filed by chrismo; hide Activity tabs older than a settable duration (e.g. 1h). Done/error rows never expire today, and "Include idle processes" is the only filter. Active as of 2026-11-06.
 
 ### Deferred
 
