@@ -197,6 +197,22 @@ chords; Ghostty's config unbinds the equivalent, Rex's doesn't.
   again in the destination loses terminal state and scrollback. See the tracked
   cross-session movement request below.
 
+## Default directory for new windows
+
+No built-in preference found for the starting directory of a new macOS window.
+For zsh, this `~/.zshrc` snippet defaults Rex shells starting at home to
+`~/dev/dscout`, while preserving other starting directories:
+
+```zsh
+if [[ -n $REX_SESSION && $PWD == $HOME && -d $HOME/dev/dscout ]]; then
+  cd "$HOME/dev/dscout"
+fi
+```
+
+This also affects nested Rex shells started at home, not just new windows.
+For a new session from the CLI, `rex new -c ~/dev/dscout` sets its directory
+explicitly. The CLI creates the session but doesn't display it in the app.
+
 ## Sidebar vanished: a two-finger swipe
 
 A two-finger horizontal trackpad swipe hides and shows the sidebar (confirmed by
