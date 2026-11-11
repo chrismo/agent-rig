@@ -26,7 +26,12 @@ Out of the box, Claude sessions did not appear in Rex's Activity filter here
 Community posts say Claude Code reports `app: claude-code` natively, and an
 open #feedback-mac bug, "claude code not visible in activity", describes the
 same empty list. Whether Claude sends nothing or Rex drops it is unsettled.
-Turning on `rex skill setup --session-naming` changed nothing.
+Turning on `rex skill setup --session-naming` changed nothing for Activity. It
+did make every new Claude session rename its Rex session, because Rex's
+SessionStart hook tells the agent to. chrismo turned that off again with
+Settings → Integrations → Agent Behavior → "Let agents name sessions" (off by
+2026-11-10). Re-running `rex skill setup` without the flag keeps whatever choice
+is installed.
 
 `bin/rex-status` sends the report from the UserPromptSubmit, PostToolUse,
 PermissionRequest and Stop hooks (`install.sh`). Confirmed: the session shows in
@@ -192,6 +197,9 @@ observations, not settled advice.
 - **Activity mode sometimes shows panes as separate "tabs" in the sidebar.**
   It happens only occasionally. chrismo hasn't worked out the trigger yet
   (2026-11-05).
+- **No agent-named sessions.** chrismo names sessions themself; "Let agents
+  name sessions" stays off (2026-11-10). See
+  [Claude hooks](#claude-hooks-activity-needs-osc-7501).
 - **New quick switcher (experimental, preview.26): tried it, not adopted.**
   chrismo's verdict was "not quite there" (2026-11-05). It merges Go to
   Anything (⌘P) and View Activity into one list of sessions, tabs and panes with
